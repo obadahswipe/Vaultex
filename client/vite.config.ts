@@ -69,6 +69,10 @@ export default defineConfig({
     }),
   ],
   base: '/',
+  server: {
+    port: 5176,
+    strictPort: true,
+  },
   build: {
     outDir: 'dist',
   },

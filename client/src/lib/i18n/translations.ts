@@ -1044,6 +1044,18 @@ export const translations = {
   'demo.cta.readyBadge':       { en: 'Ready to explore?',             ar: 'مستعد للاستكشاف؟' },
   'demo.cta.readyHeadline':    { en: 'Step inside and see the difference', ar: 'ادخل وأرَ الفارق بنفسك' },
   'demo.cta.readySub':         { en: 'Three fully functional portals. Real accounting logic. Built for FX brokerages that demand precision.', ar: 'ثلاث بوابات كاملة. منطق محاسبي حقيقي. مصمم لشركات الوساطة التي تتطلب الدقة.' },
+
+  // ── New platform modules ───────────────────────────────────────────────────
+  'sidebar.platform':          { en: 'Platform',            ar: 'المنصة' },
+  'sidebar.branches':          { en: 'Branches',            ar: 'الفروع' },
+  'sidebar.wallets':           { en: 'Wallets',             ar: 'المحافظ' },
+  'sidebar.crm':               { en: 'CRM',                 ar: 'إدارة العملاء' },
+  'sidebar.hr':                { en: 'Human Resources',     ar: 'الموارد البشرية' },
+  'sidebar.assets':            { en: 'Fixed Assets',        ar: 'الأصول الثابتة' },
+  'sidebar.ownership':         { en: 'Ownership',           ar: 'الملكية' },
+  'sidebar.risk':              { en: 'Risk',                ar: 'المخاطر' },
+  'sidebar.workflows':         { en: 'Workflows',           ar: 'سير العمل' },
+  'sidebar.documents':         { en: 'Documents',           ar: 'المستندات' },
 } as const;
 
 export type TranslationKey = keyof typeof translations;

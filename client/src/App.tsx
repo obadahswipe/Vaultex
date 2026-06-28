@@ -45,6 +45,16 @@ const GatewaySettings      = lazy(() => import('@/pages/settings/GatewaySettings
 const OperationsSettings   = lazy(() => import('@/pages/settings/OperationsSettings'));
 const Profile              = lazy(() => import('@/pages/Profile'));
 
+// New platform modules
+const Branches             = lazy(() => import('@/pages/Branches'));
+const Wallets              = lazy(() => import('@/pages/Wallets'));
+const CRM                  = lazy(() => import('@/pages/CRM'));
+const HR                   = lazy(() => import('@/pages/HR'));
+const Assets               = lazy(() => import('@/pages/Assets'));
+const Ownership            = lazy(() => import('@/pages/Ownership'));
+const Risk                 = lazy(() => import('@/pages/Risk'));
+const Workflows            = lazy(() => import('@/pages/Workflows'));
+
 // IB portal pages
 const IBLogin           = lazy(() => import('@/pages/ib/Login'));
 const IBPortalDashboard = lazy(() => import('@/pages/ib/Dashboard'));
@@ -109,6 +119,15 @@ export default function App() {
               <Route path="/chart-of-accounts" element={<ChartOfAccounts />} />
               <Route path="/users"          element={<AdminOnly><Users /></AdminOnly>} />
               <Route path="/profile"        element={<Profile />} />
+              {/* New platform modules */}
+              <Route path="/branches"   element={<Branches />} />
+              <Route path="/wallets"    element={<Wallets />} />
+              <Route path="/crm"        element={<CRM />} />
+              <Route path="/hr"         element={<HR />} />
+              <Route path="/assets"     element={<Assets />} />
+              <Route path="/ownership"  element={<Ownership />} />
+              <Route path="/risk"       element={<Risk />} />
+              <Route path="/workflows"  element={<Workflows />} />
               <Route path="/settings"       element={<AdminOnly><Settings /></AdminOnly>}>
                 <Route index element={<Navigate to="/settings/general" replace />} />
                 <Route path="general"    element={<GeneralSettings />} />

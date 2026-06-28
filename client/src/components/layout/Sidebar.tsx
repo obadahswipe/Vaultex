@@ -28,6 +28,16 @@ import {
   Scale,
   Building2,
   AlertOctagon,
+  // New modules
+  MapPin,
+  WalletCards,
+  MessageSquare,
+  UserCheck,
+  Package,
+  Crown,
+  ShieldAlert,
+  Workflow,
+  FileText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/ui.store';
@@ -71,6 +81,14 @@ const PLAIN_LABELS: Partial<Record<string, string>> = {
   '/settings/gateways': 'Gateways — payment gateway configuration',
   '/settings/operations': 'Operations Settings — workflow configuration',
   '/profile':           'My Profile — your account details',
+  '/branches':          'Branches & Departments — org structure',
+  '/wallets':           'Wallets — client wallet balances',
+  '/crm':               'CRM — leads, activities, tickets',
+  '/hr':                'HR — employees, leave, payroll',
+  '/assets':            'Fixed Assets — register and depreciation',
+  '/ownership':         'Ownership — shareholders and capital',
+  '/risk':              'Risk — live exposure and alerts',
+  '/workflows':         'Workflows — approval queues and templates',
 };
 
 const navigation: { titleKey: TranslationKey; entries: NavEntry[] }[] = [
@@ -124,6 +142,19 @@ const navigation: { titleKey: TranslationKey; entries: NavEntry[] }[] = [
           { to: '/chart-of-accounts', labelKey: 'ops.coa',                icon: Database },
         ],
       },
+    ],
+  },
+  {
+    titleKey: 'sidebar.platform',
+    entries: [
+      { to: '/branches',  labelKey: 'sidebar.branches',  icon: MapPin },
+      { to: '/wallets',   labelKey: 'sidebar.wallets',   icon: WalletCards },
+      { to: '/crm',       labelKey: 'sidebar.crm',       icon: MessageSquare },
+      { to: '/hr',        labelKey: 'sidebar.hr',        icon: UserCheck },
+      { to: '/assets',    labelKey: 'sidebar.assets',    icon: Package },
+      { to: '/ownership', labelKey: 'sidebar.ownership', icon: Crown },
+      { to: '/risk',      labelKey: 'sidebar.risk',      icon: ShieldAlert },
+      { to: '/workflows', labelKey: 'sidebar.workflows', icon: Workflow },
     ],
   },
   {
