@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Wallet, Clock, Users, ArrowRightLeft, TrendingUp, TrendingDown } from 'lucide-react';
+import { Wallet, Clock, Users, TrendingUp, TrendingDown } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { PageHint } from '@/components/shared/PageHint';
 import { SectionCard } from '@/components/shared/SectionCard';

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Crown, DollarSign, TrendingUp, Plus } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -9,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { mockShareholders, mockCapitalContributions, mockDistributions } from '@/mocks/data/ownership.mock';
-import { cn } from '@/lib/utils';
 
 const PIE_COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b'];
 
@@ -197,7 +195,7 @@ export default function Ownership() {
                         ))}
                       </Pie>
                       <Tooltip
-                        formatter={(v: number) => [`${v}%`, 'Ownership']}
+                        formatter={(v) => [`${v}%`, 'Ownership']}
                         contentStyle={{
                           borderRadius: '8px',
                           fontSize: '12px',
