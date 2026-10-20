@@ -1,376 +1,240 @@
 import { useState } from 'react';
-import {
-  UserCheck, CalendarOff, Clock, DollarSign, Plus,
-  CheckCircle, XCircle, Search, Users,
-} from 'lucide-react';
+import { Plus, Users, Wallet, CalendarDays, Check, X } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { PageHint } from '@/components/shared/PageHint';
-import { StatCard } from '@/components/shared/StatCard';
 import { SectionCard } from '@/components/shared/SectionCard';
+import { StatCard } from '@/components/shared/StatCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { mockEmployees, mockLeaveRequests, mockPayrollRuns } from '@/mocks/data/hr.mock';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Field, NativeSelect, Segmented, Toggle, attempt } from '@/components/shared/form';
+import { AccountPicker } from '@/components/shared/AccountPicker';
+import { useBooks } from '@/stores/books.store';
+import { useActingUser, useLedger } from '@/lib/data/hooks';
+import { fmtUSD } from '@/lib/data/money';
+import { isAdmin } from '@/lib/roles';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 import { cn } from '@/lib/utils';
 
-const AVATAR_COLORS = [
-  'bg-blue-500', 'bg-violet-500', 'bg-emerald-500', 'bg-amber-500',
-  'bg-pink-500', 'bg-indigo-500', 'bg-teal-500',
-];
-
-function EmployeeAvatar({ name, index }: { name: string; index: number }) {
-  return (
-    <div className={cn(
-      'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white',
-      AVATAR_COLORS[index % AVATAR_COLORS.length],
-    )}>
-      {name.charAt(0)}
-    </div>
-  );
-}
-
-function EmployeeStatusBadge({ status }: { status: string }) {
-  if (status === 'ACTIVE') {
-    return (
-      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-        Active
-      </span>
-    );
-  }
-  if (status === 'ON_LEAVE') {
-    return (
-      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-        On Leave
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300">
-      Terminated
-    </span>
-  );
-}
-
-function LeaveStatusBadge({ status }: { status: string }) {
-  if (status === 'APPROVED') {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-        <CheckCircle className="h-3 w-3" /> Approved
-      </span>
-    );
-  }
-  if (status === 'PENDING') {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-        <Clock className="h-3 w-3" /> Pending
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300">
-      <XCircle className="h-3 w-3" /> Rejected
-    </span>
-  );
-}
-
-function PayrollStatusBadge({ status }: { status: string }) {
-  if (status === 'DRAFT') {
-    return (
-      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-muted text-muted-foreground">
-        Draft
-      </span>
-    );
-  }
-  if (status === 'APPROVED') {
-    return (
-      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-        Approved
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-      Paid
-    </span>
-  );
-}
+type Tab = 'team' | 'leave' | 'pay';
 
 export default function HR() {
-  const [search, setSearch] = useState('');
+  const { tr, nameOf } = useTranslation();
+  const me = useActingUser();
+  const employees = useBooks((s) => s.employees);
+  const branches = useBooks((s) => s.branches);
+  const leaves = useBooks((s) => s.leaves);
+  const payrolls = useBooks((s) => s.payrolls);
+  const addEmployee = useBooks((s) => s.addEmployee);
+  const updateEmployee = useBooks((s) => s.updateEmployee);
+  const addLeave = useBooks((s) => s.addLeave);
+  const setLeaveStatus = useBooks((s) => s.setLeaveStatus);
+  const runPayroll = useBooks((s) => s.runPayroll);
+  const { balances } = useLedger();
+  const [tab, setTab] = useState<Tab>('team');
+  const [addOpen, setAddOpen] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [f, setF] = useState({ name: '', arabic: '', role: '', branchId: 'br-1', salary: '' });
+  const [lv, setLv] = useState({ employeeId: '', from: '', to: '', reason: '' });
+  const [payFrom, setPayFrom] = useState('1201');
 
-  const activeCount  = mockEmployees.filter(e => e.status === 'ACTIVE').length;
-  const onLeaveCount = mockEmployees.filter(e => e.status === 'ON_LEAVE').length;
-  const pendingLeave = mockLeaveRequests.filter(l => l.status === 'PENDING').length;
-  const totalPayroll = mockPayrollRuns[0]?.total_gross ?? 0;
+  const active = employees.filter((e) => e.active);
+  const monthly = active.reduce((s, e) => s + e.salary, 0);
+  const month = new Date().toISOString().slice(0, 7);
+  const paidThisMonth = payrolls.some((p) => p.month === month);
+  const branchName = (id: string) => { const b = branches.find((x) => x.id === id); return b ? nameOf({ name: b.name, arabic: b.arabic }) : '—'; };
+  const empName = (id: string) => nameOf(employees.find((e) => e.id === id));
 
-  const filteredEmployees = mockEmployees.filter(e =>
-    e.full_name.toLowerCase().includes(search.toLowerCase()) ||
-    e.employee_code.toLowerCase().includes(search.toLowerCase()) ||
-    e.position.toLowerCase().includes(search.toLowerCase()),
-  );
+  const saveEmployee = () => {
+    const ok = attempt(() => addEmployee({ name: f.name.trim(), arabic: f.arabic.trim() || undefined, role: f.role || tr('Staff', 'موظف'), branchId: f.branchId, salary: Number(f.salary) || 0, joinDate: new Date().toISOString().slice(0, 10), active: true, leaveDaysLeft: 14 }), tr('Added to the team', 'أُضيف إلى الفريق'));
+    if (ok) { setAddOpen(false); setF({ name: '', arabic: '', role: '', branchId: 'br-1', salary: '' }); }
+  };
+  const saveLeave = () => {
+    const ok = attempt(() => addLeave(lv), tr('Day-off request saved', 'تم حفظ طلب الإجازة'));
+    if (ok) { setLeaveOpen(false); setLv({ employeeId: '', from: '', to: '', reason: '' }); }
+  };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-8">
       <PageHeader
-        title="Human Resources"
-        subtitle="Manage your team, leave requests, and payroll runs"
+        title={tr('Team and salaries', 'الفريق والرواتب')}
+        subtitle={tr('Your staff, their days off, and paying salaries.', 'موظفوك، وإجازاتهم، ودفع الرواتب.')}
+        hint={
+          <PageHint id="hr-v2" title={tr('Paying salaries', 'دفع الرواتب')}>
+            {tr('Press "Pay salaries" once a month. Vaultex adds up every active person’s salary and writes it in the books for you.', 'اضغط "ادفع الرواتب" مرة في الشهر. فولتكس يجمع راتب كل موظف نشط ويسجّله في الدفاتر عنك.')}
+          </PageHint>
+        }
         actions={
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Employee
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" className="gap-1.5" onClick={() => setLeaveOpen(true)}><CalendarDays className="h-4 w-4" />{tr('Ask for days off', 'اطلب إجازة')}</Button>
+            <Button variant="gradient" className="gap-1.5" onClick={() => setAddOpen(true)}><Plus className="h-4 w-4" />{tr('Add a person', 'أضف موظفًا')}</Button>
+          </div>
         }
       />
 
-      <PageHint id="hr" icon="👥" title="Human Resources Module">
-        Track employees, approve leave requests, and run payroll. All salary data is in USD unless otherwise stated.
-        Use the Employees tab to manage headcount, Leave for request approvals, and Payroll for monthly runs.
-      </PageHint>
-
-      {/* Gradient hero */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-700 p-6 text-white shadow-lg">
-        <div className="relative z-10">
-          <div className="flex items-center gap-2 mb-1">
-            <Users className="h-5 w-5 opacity-80" />
-            <span className="text-sm font-medium opacity-80">Team Overview</span>
-          </div>
-          <p className="text-4xl font-bold tracking-tight">{mockEmployees.length} Team Members</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <span className="rounded-full bg-white/20 px-3 py-1 text-sm font-medium backdrop-blur-sm">
-              {activeCount} Active
-            </span>
-            <span className="rounded-full bg-white/20 px-3 py-1 text-sm font-medium backdrop-blur-sm">
-              {onLeaveCount} On Leave
-            </span>
-          </div>
-        </div>
-        <div aria-hidden className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
-        <div aria-hidden className="pointer-events-none absolute -bottom-8 right-32 h-32 w-32 rounded-full bg-violet-400/20 blur-2xl" />
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard label={tr('People working', 'الموظفون العاملون')} value={active.length} icon={Users} accent="blue" deltaLabel={tr(`In ${branches.length} branches`, `في ${branches.length} فروع`)} />
+        <StatCard label={tr('Salaries each month', 'الرواتب الشهرية')} value={fmtUSD(monthly)} icon={Wallet} accent="violet" deltaLabel={paidThisMonth ? tr('Paid for this month ✓', 'دُفعت لهذا الشهر ✓') : tr('Not paid for this month yet', 'لم تُدفع لهذا الشهر بعد')} />
+        <StatCard label={tr('Days-off requests', 'طلبات الإجازة')} value={leaves.filter((l) => l.status === 'pending').length} icon={CalendarDays} accent="amber" deltaLabel={tr('Waiting for an answer', 'تنتظر الرد')} onClick={() => setTab('leave')} />
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard
-          label="Active Employees"
-          value={activeCount}
-          icon={UserCheck}
-          accent="green"
-          deltaLabel="currently working"
-        />
-        <StatCard
-          label="On Leave"
-          value={onLeaveCount}
-          icon={CalendarOff}
-          accent="amber"
-          deltaLabel="approved leave"
-        />
-        <StatCard
-          label="Pending Leave"
-          value={pendingLeave}
-          icon={Clock}
-          accent="blue"
-          deltaLabel="awaiting approval"
-        />
-        <StatCard
-          label="Monthly Payroll"
-          value={`$${totalPayroll.toLocaleString()}`}
-          icon={DollarSign}
-          accent="violet"
-          deltaLabel="current period gross"
-        />
-      </div>
+      <Segmented<Tab> value={tab} onChange={setTab} options={[
+        { value: 'team', label: tr('Team', 'الفريق') },
+        { value: 'leave', label: tr('Days off', 'الإجازات'), count: leaves.filter((l) => l.status === 'pending').length },
+        { value: 'pay', label: tr('Salaries', 'الرواتب') },
+      ]} />
 
-      {/* Tabs */}
-      <Tabs defaultValue="employees">
-        <TabsList>
-          <TabsTrigger value="employees">Employees</TabsTrigger>
-          <TabsTrigger value="leave">Leave Requests</TabsTrigger>
-          <TabsTrigger value="payroll">Payroll</TabsTrigger>
-        </TabsList>
-
-        {/* ── Employees tab ── */}
-        <TabsContent value="employees" className="mt-4">
-          <SectionCard
-            title="All Employees"
-            description="Full team roster across all branches and departments"
-            padded={false}
-          >
-            {/* Search bar */}
-            <div className="px-6 py-4 border-b border-border/40">
-              <div className="relative max-w-sm">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search employees…"
-                  className="pl-9"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Code</TableHead>
-                  <TableHead>Position</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Branch</TableHead>
-                  <TableHead>Hire Date</TableHead>
-                  <TableHead className="text-right">Salary</TableHead>
-                  <TableHead>Status</TableHead>
+      {tab === 'team' && (
+        <SectionCard padded={false}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{tr('Name', 'الاسم')}</TableHead>
+                <TableHead className="hidden sm:table-cell">{tr('Job', 'الوظيفة')}</TableHead>
+                <TableHead className="hidden md:table-cell">{tr('Branch', 'الفرع')}</TableHead>
+                <TableHead className="text-end">{tr('Salary', 'الراتب')}</TableHead>
+                <TableHead className="hidden text-end lg:table-cell">{tr('Loan', 'السلفة')}</TableHead>
+                <TableHead className="hidden text-end md:table-cell">{tr('Days off left', 'أيام الإجازة المتبقية')}</TableHead>
+                <TableHead className="text-center">{tr('Working', 'يعمل')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {employees.map((e) => (
+                <TableRow key={e.id} className={cn(!e.active && 'opacity-50')}>
+                  <TableCell className="font-medium">{nameOf(e)}</TableCell>
+                  <TableCell className="hidden text-[13px] sm:table-cell">{e.role}</TableCell>
+                  <TableCell className="hidden text-[13px] md:table-cell">{branchName(e.branchId)}</TableCell>
+                  <TableCell className="text-end font-mono">{fmtUSD(e.salary)}</TableCell>
+                  <TableCell className="hidden text-end font-mono lg:table-cell">{e.loanAccountCode ? fmtUSD(balances[e.loanAccountCode] ?? 0) : '—'}</TableCell>
+                  <TableCell className="hidden text-end md:table-cell">{e.leaveDaysLeft}</TableCell>
+                  <TableCell className="text-center"><Toggle checked={e.active} onChange={(v) => updateEmployee(e.id, { active: v })} /></TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredEmployees.map((emp, i) => (
-                  <TableRow key={emp.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <EmployeeAvatar name={emp.full_name} index={i} />
-                        <div>
-                          <p className="font-medium text-foreground">{emp.full_name}</p>
-                          <p className="text-xs text-muted-foreground">{emp.employment_type.replace('_', ' ')}</p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="font-mono text-xs text-muted-foreground">{emp.employee_code}</span>
-                    </TableCell>
-                    <TableCell className="text-foreground">{emp.position}</TableCell>
-                    <TableCell className="text-muted-foreground">{emp.department_name}</TableCell>
-                    <TableCell className="text-muted-foreground">{emp.branch_name}</TableCell>
-                    <TableCell className="text-muted-foreground text-xs">{emp.hire_date}</TableCell>
-                    <TableCell className="text-right">
-                      <span className="font-mono text-sm text-foreground">
-                        ${emp.base_salary?.toLocaleString()}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <EmployeeStatusBadge status={emp.status} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </SectionCard>
-        </TabsContent>
-
-        {/* ── Leave tab ── */}
-        <TabsContent value="leave" className="mt-4">
-          <SectionCard
-            title="Leave Requests"
-            description="Review and action employee leave applications"
-            padded={false}
-            action={
-              <Button size="sm" variant="outline">
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                Request Leave
-              </Button>
-            }
-          >
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Leave Type</TableHead>
-                  <TableHead>From</TableHead>
-                  <TableHead>To</TableHead>
-                  <TableHead className="text-center">Days</TableHead>
-                  <TableHead>Approved By</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {mockLeaveRequests.map(lr => (
-                  <TableRow key={lr.id}>
-                    <TableCell className="font-medium text-foreground">{lr.employee_name}</TableCell>
-                    <TableCell className="text-muted-foreground">{lr.leave_type_name}</TableCell>
-                    <TableCell className="text-muted-foreground text-xs">{lr.start_date}</TableCell>
-                    <TableCell className="text-muted-foreground text-xs">{lr.end_date}</TableCell>
-                    <TableCell className="text-center">
-                      <span className="font-bold text-foreground">{lr.days_requested}</span>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {lr.approved_by_name ?? <span className="text-muted-foreground/40">—</span>}
-                    </TableCell>
-                    <TableCell>
-                      <LeaveStatusBadge status={lr.status} />
-                    </TableCell>
-                    <TableCell>
-                      {lr.status === 'PENDING' && (
-                        <div className="flex items-center gap-1.5">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2 text-xs text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:text-emerald-400 dark:border-emerald-800 dark:hover:bg-emerald-950/30"
-                          >
-                            <CheckCircle className="mr-1 h-3 w-3" /> Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2 text-xs text-red-600 border-red-200 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-950/30"
-                          >
-                            <XCircle className="mr-1 h-3 w-3" /> Reject
-                          </Button>
-                        </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </SectionCard>
-        </TabsContent>
-
-        {/* ── Payroll tab ── */}
-        <TabsContent value="payroll" className="mt-4">
-          <SectionCard
-            title="Payroll History"
-            description="Monthly payroll runs and payment records"
-            padded={false}
-          >
-            <div className="divide-y divide-border/40">
-              {mockPayrollRuns.map(run => (
-                <div key={run.id} className="flex flex-wrap items-center justify-between gap-4 px-6 py-5">
-                  <div>
-                    <p className="font-semibold text-foreground">
-                      {run.period_start} → {run.period_end}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Payment date: {run.payment_date}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-6">
-                    <div className="text-center">
-                      <p className="text-xs text-muted-foreground">Employees</p>
-                      <p className="mt-0.5 font-bold text-foreground">{mockEmployees.length}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs text-muted-foreground">Total Gross</p>
-                      <p className="mt-0.5 font-bold font-mono text-foreground">
-                        ${run.total_gross.toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs text-muted-foreground">Net Pay</p>
-                      <p className="mt-0.5 font-bold font-mono text-emerald-600 dark:text-emerald-400">
-                        ${run.total_net.toLocaleString()}
-                      </p>
-                    </div>
-                    <PayrollStatusBadge status={run.status} />
-                    <Button size="sm" variant="outline" className="text-xs">
-                      View Details
-                    </Button>
-                  </div>
-                </div>
               ))}
+            </TableBody>
+          </Table>
+        </SectionCard>
+      )}
+
+      {tab === 'leave' && (
+        <SectionCard padded={false}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{tr('Who', 'من')}</TableHead>
+                <TableHead>{tr('From – to', 'من – إلى')}</TableHead>
+                <TableHead className="hidden sm:table-cell">{tr('Why', 'السبب')}</TableHead>
+                <TableHead>{tr('Answer', 'الرد')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {leaves.map((l) => (
+                <TableRow key={l.id}>
+                  <TableCell className="font-medium">{empName(l.employeeId)}</TableCell>
+                  <TableCell className="text-[13px]">{l.from} → {l.to}</TableCell>
+                  <TableCell className="hidden text-[13px] sm:table-cell">{l.reason}</TableCell>
+                  <TableCell>
+                    {l.status === 'pending' ? (
+                      isAdmin(me.role) ? (
+                        <div className="flex gap-1">
+                          <Button size="xs" variant="outline" className="gap-1 text-success" onClick={() => setLeaveStatus(l.id, 'approved')}><Check className="h-3 w-3" />{tr('Yes', 'نعم')}</Button>
+                          <Button size="xs" variant="outline" className="gap-1 text-destructive" onClick={() => setLeaveStatus(l.id, 'rejected')}><X className="h-3 w-3" />{tr('No', 'لا')}</Button>
+                        </div>
+                      ) : <Badge variant="warning">{tr('Waiting', 'ينتظر')}</Badge>
+                    ) : l.status === 'approved' ? <Badge variant="success">{tr('Yes', 'موافق')}</Badge> : <Badge variant="destructive">{tr('No', 'مرفوض')}</Badge>}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </SectionCard>
+      )}
+
+      {tab === 'pay' && (
+        <div className="grid gap-6 lg:grid-cols-3">
+          <SectionCard title={tr(`Pay salaries for ${month}`, `ادفع رواتب ${month}`)}>
+            <div className="space-y-4">
+              <p className="text-[14px]">{tr(`${active.length} people · ${fmtUSD(monthly)} in total`, `${active.length} موظفين · ${fmtUSD(monthly)} بالمجموع`)}</p>
+              <Field label={tr('Pay from', 'ادفع من')}>
+                <AccountPicker value={payFrom} onChange={setPayFrom} categories={['banks', 'funds']} />
+              </Field>
+              <Button variant="gradient" className="w-full" disabled={paidThisMonth || !payFrom || !isAdmin(me.role)} onClick={() => attempt(() => runPayroll(month, payFrom, me.email), tr('Salaries paid and written in the books', 'دُفعت الرواتب وسُجّلت في الدفاتر'))}>
+                {paidThisMonth ? tr('Already paid this month ✓', 'دُفعت هذا الشهر ✓') : tr('Pay salaries', 'ادفع الرواتب')}
+              </Button>
+              {!isAdmin(me.role) && <p className="text-[12px] text-muted-foreground">{tr('Only a manager can pay salaries.', 'المدير فقط يستطيع دفع الرواتب.')}</p>}
             </div>
           </SectionCard>
-        </TabsContent>
-      </Tabs>
+          <SectionCard className="lg:col-span-2" padded={false} title={tr('Salaries paid before', 'رواتب دُفعت سابقًا')}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{tr('Month', 'الشهر')}</TableHead>
+                  <TableHead className="text-end">{tr('Total', 'المجموع')}</TableHead>
+                  <TableHead>{tr('Paid on', 'دُفعت في')}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {payrolls.slice().reverse().map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell className="font-medium">{p.month}</TableCell>
+                    <TableCell className="text-end font-mono">{fmtUSD(p.total)}</TableCell>
+                    <TableCell className="text-[13px]">{p.createdAt.slice(0, 10)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </SectionCard>
+        </div>
+      )}
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{tr('Add a person', 'أضف موظفًا')}</DialogTitle>
+            <DialogDescription>{tr('They will be added to next month’s salaries.', 'سيُضاف إلى رواتب الشهر القادم.')}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={tr('Name', 'الاسم')}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+            <Field label={tr('Name in Arabic', 'الاسم بالعربية')}><Input dir="rtl" value={f.arabic} onChange={(e) => setF({ ...f, arabic: e.target.value })} /></Field>
+            <Field label={tr('Job', 'الوظيفة')}><Input value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} /></Field>
+            <Field label={tr('Salary each month (USD)', 'الراتب الشهري (دولار)')}><Input type="number" value={f.salary} onChange={(e) => setF({ ...f, salary: e.target.value })} /></Field>
+            <Field label={tr('Branch', 'الفرع')} className="sm:col-span-2">
+              <NativeSelect value={f.branchId} onChange={(e) => setF({ ...f, branchId: e.target.value })}>
+                {branches.map((b) => <option key={b.id} value={b.id}>{nameOf({ name: b.name, arabic: b.arabic })}</option>)}
+              </NativeSelect>
+            </Field>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setAddOpen(false)}>{tr('Cancel', 'إلغاء')}</Button>
+            <Button variant="gradient" disabled={!f.name.trim()} onClick={saveEmployee}>{tr('Add', 'أضف')}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{tr('Ask for days off', 'اطلب إجازة')}</DialogTitle>
+            <DialogDescription>{tr('A manager will say yes or no.', 'سيرد المدير بنعم أو لا.')}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={tr('Who', 'من')} className="sm:col-span-2">
+              <NativeSelect value={lv.employeeId} onChange={(e) => setLv({ ...lv, employeeId: e.target.value })}>
+                <option value="">{tr('Choose…', 'اختر…')}</option>
+                {active.map((e) => <option key={e.id} value={e.id}>{nameOf(e)}</option>)}
+              </NativeSelect>
+            </Field>
+            <Field label={tr('From', 'من')}><Input type="date" value={lv.from} onChange={(e) => setLv({ ...lv, from: e.target.value })} /></Field>
+            <Field label={tr('To', 'إلى')}><Input type="date" value={lv.to} onChange={(e) => setLv({ ...lv, to: e.target.value })} /></Field>
+            <Field label={tr('Why', 'السبب')} className="sm:col-span-2"><Input value={lv.reason} onChange={(e) => setLv({ ...lv, reason: e.target.value })} /></Field>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setLeaveOpen(false)}>{tr('Cancel', 'إلغاء')}</Button>
+            <Button variant="gradient" disabled={!lv.employeeId || !lv.from || !lv.to || lv.to < lv.from} onClick={saveLeave}>{tr('Send', 'أرسل')}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

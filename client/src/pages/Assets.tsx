@@ -1,248 +1,138 @@
 import { useState } from 'react';
-import { Package, DollarSign, TrendingDown, BarChart2, Plus } from 'lucide-react';
+import { Plus, Package, TrendingDown, Laptop, Armchair, Car, Building, AppWindow } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { PageHint } from '@/components/shared/PageHint';
-import { StatCard } from '@/components/shared/StatCard';
 import { SectionCard } from '@/components/shared/SectionCard';
+import { StatCard } from '@/components/shared/StatCard';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { mockAssets, mockAssetCategories } from '@/mocks/data/assets.mock';
-import { cn } from '@/lib/utils';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Field, NativeSelect, attempt } from '@/components/shared/form';
+import { AccountPicker } from '@/components/shared/AccountPicker';
+import { useBooks } from '@/stores/books.store';
+import { useActingUser } from '@/lib/data/hooks';
+import { fmtUSD, round2 } from '@/lib/data/money';
+import { PostingError } from '@/lib/data/ledger';
+import { isAdmin } from '@/lib/roles';
+import { useTranslation } from '@/lib/i18n/useTranslation';
+import type { FixedAsset } from '@/lib/data/types';
 
-const STATUS_FILTERS = ['ALL', 'ACTIVE', 'DISPOSED', 'UNDER_REPAIR'] as const;
-type StatusFilter = typeof STATUS_FILTERS[number];
-
-function AssetStatusBadge({ status }: { status: string }) {
-  if (status === 'ACTIVE') {
-    return (
-      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-        Active
-      </span>
-    );
-  }
-  if (status === 'DISPOSED') {
-    return (
-      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-muted text-muted-foreground">
-        Disposed
-      </span>
-    );
-  }
-  if (status === 'UNDER_REPAIR') {
-    return (
-      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-        Under Repair
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300">
-      {status.replace(/_/g, ' ')}
-    </span>
-  );
-}
-
-function NbvCell({ nbv }: { nbv: number }) {
-  if (nbv === 0) {
-    return (
-      <span className="font-mono text-xs font-semibold text-amber-600 dark:text-amber-400">
-        Fully Depreciated
-      </span>
-    );
-  }
-  return (
-    <span className="font-mono text-sm font-bold text-emerald-600 dark:text-emerald-400">
-      ${nbv.toLocaleString()}
-    </span>
-  );
-}
+const KIND: Record<FixedAsset['kind'], { en: string; ar: string; icon: typeof Laptop; life: number }> = {
+  computers: { en: 'Computers and screens', ar: 'حواسيب وشاشات', icon: Laptop, life: 36 },
+  furniture: { en: 'Furniture',             ar: 'أثاث',          icon: Armchair, life: 60 },
+  vehicles:  { en: 'Cars',                  ar: 'سيارات',        icon: Car, life: 60 },
+  office:    { en: 'Office fit-out',        ar: 'تجهيز المكتب',  icon: Building, life: 84 },
+  software:  { en: 'Software',              ar: 'برامج',         icon: AppWindow, life: 36 },
+};
 
 export default function Assets() {
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  const { tr, nameOf } = useTranslation();
+  const me = useActingUser();
+  const assets = useBooks((s) => s.assets);
+  const branches = useBooks((s) => s.branches);
+  const addAsset = useBooks((s) => s.addAsset);
+  const depreciateMonth = useBooks((s) => s.depreciateMonth);
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ name: '', arabic: '', kind: 'computers' as FixedAsset['kind'], cost: '', life: '36', paidFrom: '1201', branchId: 'br-1' });
 
-  const filtered = statusFilter === 'ALL'
-    ? mockAssets
-    : mockAssets.filter(a => a.status === statusFilter);
+  const worth = (a: FixedAsset) => round2(a.cost - (a.cost / a.lifeMonths) * a.monthsDepreciated);
+  const totalCost = assets.reduce((s, a) => s + a.cost, 0);
+  const totalWorth = assets.reduce((s, a) => s + worth(a), 0);
+  const monthly = round2(assets.filter((a) => a.active && a.monthsDepreciated < a.lifeMonths).reduce((s, a) => s + a.cost / a.lifeMonths, 0));
 
-  const activeAssets     = mockAssets.filter(a => a.status === 'ACTIVE');
-  const totalCost        = mockAssets.reduce((s, a) => s + a.purchase_cost, 0);
-  const totalAccumDepr   = mockAssets.reduce((s, a) => s + (a.accumulated_depreciation ?? 0), 0);
-  const totalNBV         = mockAssets.reduce((s, a) => s + (a.net_book_value ?? 0), 0);
+  const save = () => {
+    const ok = attempt(() => addAsset({ name: f.name.trim(), arabic: f.arabic || undefined, kind: f.kind, cost: Number(f.cost), boughtOn: new Date().toISOString().slice(0, 10), lifeMonths: Number(f.life) || 36, branchId: f.branchId }, f.paidFrom, me.email), tr('Bought and written in the books', 'تم الشراء والتسجيل في الدفاتر'));
+    if (ok) { setOpen(false); setF({ ...f, name: '', arabic: '', cost: '' }); }
+  };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-8">
       <PageHeader
-        title="Fixed Assets"
-        subtitle="Asset register, depreciation schedules, and category management"
-        actions={
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Asset
-          </Button>
-        }
+        title={tr('Things we own', 'ممتلكات الشركة')}
+        subtitle={tr('Computers, furniture and other things the company bought.', 'الحواسيب والأثاث وغيرها مما اشترته الشركة.')}
+        hint={<PageHint id="assets-v2" title={tr('What is "wear and tear"?', 'ما هو "الاستهلاك"؟')}>{tr('Things lose value as they get older. Each month, Vaultex counts a small part of their price as a cost. Press "Count this month’s wear" once a month.', 'تفقد الأشياء قيمتها مع الوقت. كل شهر يحسب فولتكس جزءًا صغيرًا من ثمنها كمصروف. اضغط "احسب استهلاك هذا الشهر" مرة في الشهر.')}</PageHint>}
+        actions={isAdmin(me.role) && (
+          <div className="flex gap-2">
+            <Button variant="outline" className="gap-1.5" onClick={() => attempt(() => { const n = depreciateMonth(me.email); if (!n) throw new PostingError('There is nothing to count this month.', 'لا يوجد شيء للحساب هذا الشهر.'); }, tr(`Wear and tear of ${fmtUSD(monthly, 2)} written in the books`, `سُجّل استهلاك بقيمة ${fmtUSD(monthly, 2)} في الدفاتر`))}>
+              <TrendingDown className="h-4 w-4" />{tr("Count this month's wear", 'احسب استهلاك هذا الشهر')}
+            </Button>
+            <Button variant="gradient" className="gap-1.5" onClick={() => setOpen(true)}><Plus className="h-4 w-4" />{tr('We bought something', 'اشترينا شيئًا')}</Button>
+          </div>
+        )}
       />
 
-      <PageHint id="assets" icon="🏗️" title="Fixed Assets Module">
-        Track all fixed assets, their depreciation schedules (straight-line or declining-balance), and net book value.
-        Disposed assets are retained for historical reference.
-      </PageHint>
-
-      {/* Gradient hero */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-700 p-6 text-white shadow-lg">
-        <div className="relative z-10">
-          <p className="text-sm font-medium opacity-80 mb-1">Net Book Value</p>
-          <p className="text-4xl font-bold tracking-tight">${totalNBV.toLocaleString()}</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <span className="rounded-full bg-white/20 px-3 py-1 text-sm font-medium backdrop-blur-sm">
-              Original Cost ${totalCost.toLocaleString()}
-            </span>
-            <span className="rounded-full bg-white/20 px-3 py-1 text-sm font-medium backdrop-blur-sm">
-              Accum. Depreciation ${totalAccumDepr.toLocaleString()}
-            </span>
-          </div>
-        </div>
-        <div aria-hidden className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
-        <div aria-hidden className="pointer-events-none absolute -bottom-8 right-32 h-32 w-32 rounded-full bg-violet-400/20 blur-2xl" />
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard label={tr('Paid for them', 'دفعنا ثمنها')} value={fmtUSD(totalCost)} icon={Package} accent="blue" deltaLabel={tr(`${assets.length} things`, `${assets.length} أشياء`)} />
+        <StatCard label={tr('Worth today', 'قيمتها اليوم')} value={fmtUSD(totalWorth)} icon={Package} accent="violet" deltaLabel={tr('After wear and tear', 'بعد الاستهلاك')} />
+        <StatCard label={tr('Wear each month', 'الاستهلاك الشهري')} value={fmtUSD(monthly, 2)} icon={TrendingDown} accent="amber" deltaLabel={tr('Counted as a cost', 'يُحسب كمصروف')} />
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard
-          label="Active Assets"
-          value={activeAssets.length}
-          icon={Package}
-          accent="blue"
-          deltaLabel="in service"
-        />
-        <StatCard
-          label="Total Cost"
-          value={`$${totalCost.toLocaleString()}`}
-          icon={DollarSign}
-          accent="green"
-          deltaLabel="original purchase cost"
-        />
-        <StatCard
-          label="Accum. Depreciation"
-          value={`$${totalAccumDepr.toLocaleString()}`}
-          icon={TrendingDown}
-          accent="pink"
-          deltaLabel="total written down"
-        />
-        <StatCard
-          label="Net Book Value"
-          value={`$${totalNBV.toLocaleString()}`}
-          icon={BarChart2}
-          accent="violet"
-          deltaLabel="carrying value"
-        />
-      </div>
-
-      {/* Tabs */}
-      <Tabs defaultValue="register">
-        <TabsList>
-          <TabsTrigger value="register">Asset Register</TabsTrigger>
-          <TabsTrigger value="categories">Categories</TabsTrigger>
-        </TabsList>
-
-        {/* ── Asset Register tab ── */}
-        <TabsContent value="register" className="mt-4 space-y-4">
-          {/* Filter chips */}
-          <div className="flex flex-wrap gap-2">
-            {STATUS_FILTERS.map(s => (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={cn(
-                  'rounded-full px-3 py-1 text-xs font-medium transition-all',
-                  statusFilter === s
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80',
-                )}
-              >
-                {s === 'ALL' ? 'All' : s.replace(/_/g, ' ')}
-              </button>
-            ))}
-          </div>
-
-          <SectionCard
-            title={statusFilter === 'ALL' ? 'All Assets' : `${statusFilter.replace(/_/g, ' ')} Assets`}
-            description={`Showing ${filtered.length} of ${mockAssets.length} assets`}
-            padded={false}
-          >
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Asset</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Branch</TableHead>
-                  <TableHead>Purchase Date</TableHead>
-                  <TableHead className="text-right">Cost</TableHead>
-                  <TableHead className="text-right">Accum. Depr.</TableHead>
-                  <TableHead className="text-right">NBV</TableHead>
-                  <TableHead>Status</TableHead>
+      <SectionCard padded={false}>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{tr('Thing', 'الشيء')}</TableHead>
+              <TableHead className="hidden md:table-cell">{tr('Branch', 'الفرع')}</TableHead>
+              <TableHead className="text-end">{tr('Price', 'الثمن')}</TableHead>
+              <TableHead className="hidden text-end sm:table-cell">{tr('Lasts', 'يدوم')}</TableHead>
+              <TableHead className="text-end">{tr('Worth today', 'قيمته اليوم')}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {assets.map((a) => {
+              const k = KIND[a.kind];
+              const pct = Math.round((worth(a) / a.cost) * 100);
+              const b = branches.find((x) => x.id === a.branchId);
+              return (
+                <TableRow key={a.id}>
+                  <TableCell>
+                    <p className="flex items-center gap-2 font-medium"><k.icon className="h-4 w-4 text-muted-foreground" />{nameOf(a)}</p>
+                    <p className="text-[11px] text-muted-foreground">{tr(k.en, k.ar)} · {tr('bought', 'اشتُري')} {a.boughtOn}</p>
+                  </TableCell>
+                  <TableCell className="hidden text-[13px] md:table-cell">{b ? nameOf({ name: b.name, arabic: b.arabic }) : '—'}</TableCell>
+                  <TableCell className="text-end font-mono">{fmtUSD(a.cost)}</TableCell>
+                  <TableCell className="hidden text-end text-[13px] sm:table-cell">{tr(`${a.lifeMonths / 12} years`, `${a.lifeMonths / 12} سنوات`)}</TableCell>
+                  <TableCell className="text-end">
+                    <p className="font-mono font-semibold">{fmtUSD(worth(a))}</p>
+                    <div className="ms-auto mt-1 h-1.5 w-20 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} /></div>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map(asset => (
-                  <TableRow key={asset.id}>
-                    <TableCell>
-                      <p className="font-medium text-foreground">{asset.name}</p>
-                      <p className="font-mono text-xs text-muted-foreground">{asset.asset_code}</p>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{asset.category_name}</TableCell>
-                    <TableCell className="text-muted-foreground">{asset.branch_name}</TableCell>
-                    <TableCell className="text-muted-foreground text-xs">{asset.purchase_date}</TableCell>
-                    <TableCell className="text-right">
-                      <span className="font-mono text-sm text-foreground">
-                        ${asset.purchase_cost.toLocaleString()}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span className="font-mono text-sm text-red-600 dark:text-red-400">
-                        ${asset.accumulated_depreciation.toLocaleString()}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <NbvCell nbv={asset.net_book_value} />
-                    </TableCell>
-                    <TableCell>
-                      <AssetStatusBadge status={asset.status} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </SectionCard>
-        </TabsContent>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </SectionCard>
 
-        {/* ── Categories tab ── */}
-        <TabsContent value="categories" className="mt-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {mockAssetCategories.map(cat => (
-              <div key={cat.id} className="card-elevated flex items-center justify-between p-5">
-                <div>
-                  <p className="font-semibold text-foreground">{cat.name}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {cat.depreciation_method.replace(/_/g, ' ')}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    Useful life: {cat.useful_life_years} years
-                  </p>
-                </div>
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/10">
-                  <TrendingDown className="h-5 w-5 text-violet-500" />
-                </div>
-              </div>
-            ))}
-
-            {/* Add category placeholder */}
-            <button className="flex min-h-[84px] items-center justify-center gap-2 rounded-2xl border border-dashed border-border text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
-              <Plus className="h-4 w-4" />
-              <span className="text-sm font-medium">Add Category</span>
-            </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{tr('We bought something', 'اشترينا شيئًا')}</DialogTitle>
+            <DialogDescription>{tr('Vaultex takes the money out of the bank or cash box and adds the thing to what you own.', 'فولتكس يخرج المال من البنك أو الصندوق ويضيف الشيء إلى ممتلكاتك.')}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={tr('What is it?', 'ما هو؟')}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={tr('e.g. 4 new laptops', 'مثال: 4 حواسيب محمولة')} /></Field>
+            <Field label={tr('Name in Arabic', 'الاسم بالعربية')}><Input dir="rtl" value={f.arabic} onChange={(e) => setF({ ...f, arabic: e.target.value })} /></Field>
+            <Field label={tr('Kind', 'النوع')}>
+              <NativeSelect value={f.kind} onChange={(e) => { const k = e.target.value as FixedAsset['kind']; setF({ ...f, kind: k, life: String(KIND[k].life) }); }}>
+                {Object.entries(KIND).map(([k, v]) => <option key={k} value={k}>{tr(v.en, v.ar)}</option>)}
+              </NativeSelect>
+            </Field>
+            <Field label={tr('Price (USD)', 'الثمن (دولار)')}><Input type="number" value={f.cost} onChange={(e) => setF({ ...f, cost: e.target.value })} /></Field>
+            <Field label={tr('How many months will it last?', 'كم شهرًا سيدوم؟')}><Input type="number" value={f.life} onChange={(e) => setF({ ...f, life: e.target.value })} /></Field>
+            <Field label={tr('Branch', 'الفرع')}>
+              <NativeSelect value={f.branchId} onChange={(e) => setF({ ...f, branchId: e.target.value })}>
+                {branches.map((b) => <option key={b.id} value={b.id}>{nameOf({ name: b.name, arabic: b.arabic })}</option>)}
+              </NativeSelect>
+            </Field>
+            <Field label={tr('Paid from', 'دُفع من')} className="sm:col-span-2"><AccountPicker value={f.paidFrom} onChange={(v) => setF({ ...f, paidFrom: v })} categories={['banks', 'funds']} /></Field>
           </div>
-        </TabsContent>
-      </Tabs>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setOpen(false)}>{tr('Cancel', 'إلغاء')}</Button>
+            <Button variant="gradient" disabled={!f.name.trim() || !(Number(f.cost) > 0)} onClick={save}>{tr('Save', 'حفظ')}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

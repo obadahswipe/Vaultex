@@ -1,236 +1,131 @@
-import { useMemo, useState } from 'react';
-import { BarChart2, TrendingUp, Target } from 'lucide-react';
+import { useMemo } from 'react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { Timer, Inbox, TrendingUp, Users } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { PageHint } from '@/components/shared/PageHint';
 import { SectionCard } from '@/components/shared/SectionCard';
 import { StatCard } from '@/components/shared/StatCard';
-import { TrendChart } from '@/components/shared/TrendChart';
-import { MiniBarChart } from '@/components/shared/MiniBarChart';
-import { useOperationsStore } from '@/stores/operations.store';
+import { useBooks } from '@/stores/books.store';
+import { useLedger } from '@/lib/data/hooks';
+import { profitAndLoss } from '@/lib/data/ledger';
+import { REQUEST_TYPE_LABEL } from '@/lib/data/labels';
+import { fmtShort, fmtUSD, round2, toUSD } from '@/lib/data/money';
+import { daysAgo } from '@/lib/data/seed';
 import { useTranslation } from '@/lib/i18n/useTranslation';
-import { cn } from '@/lib/utils';
-import type { RequestType } from '@/lib/workbook';
+import type { RequestType } from '@/lib/data/types';
 
-const TYPE_COLORS: Record<RequestType, string> = {
-  deposit: 'bg-emerald-500', withdrawal: 'bg-amber-500', ib_deposit: 'bg-sky-500',
-  ib_withdrawal: 'bg-orange-500', transfer_to: 'bg-violet-500', transfer_from: 'bg-indigo-500', expense: 'bg-red-500',
-};
-
-const TYPE_LABELS: Record<RequestType, string> = {
-  deposit: 'Deposit', withdrawal: 'Withdrawal', ib_deposit: 'IB Dep', ib_withdrawal: 'IB Wdr',
-  transfer_to: 'Xfer→', transfer_from: '←Xfer', expense: 'Expense',
-};
-
-type Range = '7d' | '30d' | '90d';
+const COLORS = ['#10b981', '#f59e0b', '#6366f1', '#ef4444', '#0ea5e9', '#a855f7', '#64748b'];
+const tooltipStyle = { background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 12, fontSize: 12 };
+const axis = { fontSize: 11, fill: 'hsl(var(--muted-foreground))' };
 
 export default function OperationsAnalytics() {
-  const { t } = useTranslation();
-  const { requests } = useOperationsStore();
-  const [range, setRange] = useState<Range>('30d');
+  const { tr, nameOf } = useTranslation();
+  const requests = useBooks((s) => s.requests);
+  const clients = useBooks((s) => s.clients);
+  const { accounts, entries, rates } = useLedger();
 
-  const rangeDays: Record<Range, number> = { '7d': 7, '30d': 30, '90d': 90 };
-  const days = rangeDays[range];
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - days);
-  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  const days = useMemo(() => Array.from({ length: 30 }, (_, i) => daysAgo(29 - i)), []);
 
-  const inRange = useMemo(() => requests.filter((r) => r.date >= cutoffStr), [requests, cutoffStr]);
+  const perDay = useMemo(() => days.map((d) => ({ day: d.slice(5), count: requests.filter((r) => r.date === d).length })), [days, requests]);
 
-  const totalRequests = inRange.length;
-  const completedRequests = inRange.filter((r) => r.status === 'voucher').length;
-  const completionRate = totalRequests > 0 ? (completedRequests / totalRequests) * 100 : 0;
-  const totalVolume = inRange.flatMap((r) => r.lines).reduce((s, l) => s + l.amount, 0);
+  const profitPerDay = useMemo(() => days.map((d) => ({ day: d.slice(5), profit: profitAndLoss(accounts, entries, d, d).profit })), [days, accounts, entries]);
 
-  // Volume by type
-  const volumeByType = useMemo(() => {
-    const map: Partial<Record<RequestType, number>> = {};
-    inRange.forEach((r) => {
-      const v = r.lines.reduce((s, l) => s + l.amount, 0);
-      map[r.type] = (map[r.type] ?? 0) + v;
-    });
-    return Object.entries(map)
-      .sort(([, a], [, b]) => b - a)
-      .map(([type, volume]) => ({ type: type as RequestType, volume: volume! }));
-  }, [inRange]);
+  const byKind = useMemo(() => {
+    const m = new Map<RequestType, number>();
+    for (const r of requests) if (r.date >= days[0]) m.set(r.type, (m.get(r.type) ?? 0) + 1);
+    return [...m.entries()].map(([k, v]) => ({ name: tr(REQUEST_TYPE_LABEL[k].en, REQUEST_TYPE_LABEL[k].ar), value: v }));
+  }, [requests, days, tr]);
 
-  // Count by type
-  const countByType = useMemo(() => {
-    const map: Partial<Record<RequestType, number>> = {};
-    inRange.forEach((r) => { map[r.type] = (map[r.type] ?? 0) + 1; });
-    return map;
-  }, [inRange]);
+  const topClients = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of requests) {
+      if (r.status !== 'voucher' || r.type !== 'deposit' || r.date < days[0]) continue;
+      for (const l of r.lines) m.set(l.accountNo, (m.get(l.accountNo) ?? 0) + toUSD(l.amount, l.currency, rates));
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6)
+      .map(([code, v]) => ({ name: nameOf(clients.find((c) => c.accountNo === code)), value: round2(v) }));
+  }, [requests, rates, clients, days, nameOf]);
 
-  // Top accounts by volume
-  const topAccounts = useMemo(() => {
-    const map: Record<string, number> = {};
-    inRange.flatMap((r) => r.lines).forEach((l) => {
-      map[l.accountNo] = (map[l.accountNo] ?? 0) + l.amount;
-    });
-    return Object.entries(map)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 8)
-      .map(([account, volume]) => ({ account, volume }));
-  }, [inRange]);
-
-  // Status funnel
-  const statusCounts = useMemo(() => ({
-    pending: inRange.filter((r) => r.status === 'pending').length,
-    confirmed: inRange.filter((r) => r.status === 'confirmed').length,
-    executed: inRange.filter((r) => r.status === 'executed').length,
-    voucher: inRange.filter((r) => r.status === 'voucher').length,
-  }), [inRange]);
-
-  // Daily volume for trend chart
-  const dailySeries = useMemo(() => {
-    const map: Record<string, number> = {};
-    inRange.forEach((r) => {
-      const v = r.lines.reduce((s, l) => s + l.amount, 0);
-      map[r.date] = (map[r.date] ?? 0) + v;
-    });
-    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([date, value]) => ({
-      label: date.slice(5),
-      value,
-    }));
-  }, [inRange]);
-
-  const largestTx = useMemo(() => {
-    const max = inRange.reduce((best, r) => {
-      const v = r.lines.reduce((s, l) => s + l.amount, 0);
-      return v > best.vol ? { vol: v, req: r } : best;
-    }, { vol: 0, req: null as typeof inRange[0] | null });
-    return max;
-  }, [inRange]);
-
-  const topAccountData = topAccounts.map((a) => ({ label: a.account, value: a.volume }));
+  const done = requests.filter((r) => r.status === 'voucher' && r.timeline.length >= 2);
+  const avgHours = done.length
+    ? done.reduce((s, r) => s + (new Date(r.timeline[r.timeline.length - 1].at).getTime() - new Date(r.timeline[0].at).getTime()) / 3_600_000, 0) / done.length
+    : 0;
+  const monthProfit = profitPerDay.reduce((s, d) => s + d.profit, 0);
+  const deposits30 = requests.filter((r) => r.type === 'deposit' && r.status === 'voucher' && r.date >= days[0]).reduce((s, r) => s + r.lines.reduce((x, l) => x + toUSD(l.amount, l.currency, rates), 0), 0);
 
   return (
     <div className="space-y-8">
       <PageHeader
-        title={t('analytics.title')}
-        subtitle={t('analytics.subtitle2')}
-        hint={
-          <PageHint id="ops-analytics" title={t('hint.analytics.title')}>
-            {t('hint.analytics.body')}
-          </PageHint>
-        }
-        actions={
-          <div className="flex gap-1 rounded-xl border border-border/60 bg-card p-1">
-            {(['7d', '30d', '90d'] as Range[]).map((r) => (
-              <button
-                key={r}
-                onClick={() => setRange(r)}
-                className={cn(
-                  'rounded-lg px-3 py-1 text-xs font-semibold transition-colors',
-                  range === r ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent/60',
-                )}
-              >
-                {r === '7d' ? t('analytics.last7d') : r === '30d' ? t('analytics.last30d') : t('analytics.last90d')}
-              </button>
-            ))}
-          </div>
-        }
+        title={tr('Charts', 'الرسوم البيانية')}
+        subtitle={tr('The last 30 days in pictures.', 'آخر 30 يومًا بالصور.')}
+        hint={<PageHint id="charts-v2" title={tr('Tip', 'نصيحة')}>{tr('Move your mouse over a bar to see the exact number.', 'مرّر الفأرة فوق العمود لترى الرقم بالضبط.')}</PageHint>}
       />
 
-      <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
-        <div className="sm:col-span-1 lg:col-span-2">
-          <StatCard label={t('analytics.totalRequests')} value={totalRequests} icon={BarChart2} accent="blue" />
-        </div>
-        <div className="sm:col-span-1 lg:col-span-2">
-          <StatCard label={t('analytics.totalVolume')} value={`$${totalVolume.toLocaleString()}`} icon={TrendingUp} accent="green" />
-        </div>
-        <div className="sm:col-span-1 lg:col-span-2">
-          <StatCard label={t('analytics.completionRate')} value={`${completionRate.toFixed(1)}%`} icon={Target} accent="amber" />
-        </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label={tr('Money requests', 'طلبات المال')} value={perDay.reduce((s, d) => s + d.count, 0)} icon={Inbox} accent="blue" deltaLabel={tr('In 30 days', 'في 30 يومًا')} />
+        <StatCard label={tr('Time to finish a request', 'وقت إنهاء الطلب')} value={tr(`${avgHours.toFixed(1)} h`, `${avgHours.toFixed(1)} س`)} icon={Timer} accent="violet" deltaLabel={tr('From made to written in the books', 'من الإنشاء إلى التسجيل')} />
+        <StatCard label={tr('Money added by clients', 'مال أضافه الزبائن')} value={fmtShort(deposits30)} icon={Users} accent="green" deltaLabel={tr('In 30 days', 'في 30 يومًا')} />
+        <StatCard label={tr('Profit', 'الربح')} value={fmtShort(monthProfit)} icon={TrendingUp} accent={monthProfit >= 0 ? 'green' : 'pink'} deltaLabel={tr('In 30 days', 'في 30 يومًا')} />
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2">
-        {/* Volume trend */}
-        <SectionCard title={`${t('analytics.volumeByType')} — ${range}`} className="sm:col-span-2">
-          {dailySeries.length > 0 ? (
-            <TrendChart data={dailySeries} height={200} formatValue={(v) => `$${(v / 1000).toFixed(1)}k`} />
-          ) : (
-            <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">No data in range</div>
-          )}
-        </SectionCard>
-
-        {/* Volume by type breakdown */}
-        <SectionCard title="Volume breakdown by type">
-          <div className="space-y-3">
-            {volumeByType.map(({ type, volume }) => {
-              const pct = totalVolume > 0 ? (volume / totalVolume) * 100 : 0;
-              return (
-                <div key={type} className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className={cn('h-2.5 w-2.5 rounded-full', TYPE_COLORS[type])} />
-                      <span className="font-medium">{TYPE_LABELS[type]}</span>
-                      <span className="text-xs text-muted-foreground">({countByType[type] ?? 0}x)</span>
-                    </div>
-                    <span className="font-mono font-semibold">${volume.toLocaleString()}</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                    <div className={cn('h-full rounded-full', TYPE_COLORS[type])} style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-            {volumeByType.length === 0 && <p className="text-sm text-muted-foreground">No requests in range.</p>}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <SectionCard title={tr('Requests each day', 'الطلبات كل يوم')}>
+          <div className="h-60" dir="ltr">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={perDay}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="day" tick={axis} axisLine={false} tickLine={false} interval={4} />
+                <YAxis tick={axis} axisLine={false} tickLine={false} width={28} allowDecimals={false} />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Bar dataKey="count" name={tr('Requests', 'طلبات')} fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </SectionCard>
 
-        {/* Status funnel */}
-        <SectionCard title={t('analytics.statusFunnel')}>
-          <div className="space-y-3">
-            {[
-              { label: 'Created', value: inRange.length, color: 'bg-muted' },
-              { label: 'Confirmed', value: inRange.length - statusCounts.pending, color: 'bg-blue-500' },
-              { label: 'Executed', value: statusCounts.executed + statusCounts.voucher, color: 'bg-violet-500' },
-              { label: 'Voucher', value: statusCounts.voucher, color: 'bg-emerald-500' },
-            ].map((s) => {
-              const pct = inRange.length > 0 ? (s.value / inRange.length) * 100 : 0;
-              return (
-                <div key={s.label} className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span className="font-medium">{s.label}</span>
-                    <span className="tabular-nums font-semibold">{s.value} <span className="text-xs text-muted-foreground">({pct.toFixed(0)}%)</span></span>
-                  </div>
-                  <div className="h-2 rounded-full bg-muted overflow-hidden">
-                    <div className={cn('h-full rounded-full', s.color)} style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              );
-            })}
+        <SectionCard title={tr('Profit each day', 'الربح كل يوم')}>
+          <div className="h-60" dir="ltr">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={profitPerDay}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="day" tick={axis} axisLine={false} tickLine={false} interval={4} />
+                <YAxis tick={axis} axisLine={false} tickLine={false} width={56} tickFormatter={(v) => fmtShort(v)} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v) => fmtUSD(Number(v))} />
+                <Line type="monotone" dataKey="profit" name={tr('Profit', 'الربح')} stroke="hsl(var(--success))" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </SectionCard>
+
+        <SectionCard title={tr('Kinds of requests', 'أنواع الطلبات')}>
+          <div className="h-60" dir="ltr">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={byKind} dataKey="value" nameKey="name" innerRadius={50} outerRadius={85} paddingAngle={2}>
+                  {byKind.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                </Pie>
+                <Tooltip contentStyle={tooltipStyle} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-3 text-[12px]">
+            {byKind.map((k, i) => <span key={k.name} className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />{k.name} ({k.value})</span>)}
+          </div>
+        </SectionCard>
+
+        <SectionCard title={tr('Clients who added the most money', 'الزبائن الأكثر إضافة للمال')}>
+          <div className="h-60" dir="ltr">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={topClients} layout="vertical" margin={{ left: 20 }}>
+                <XAxis type="number" tick={axis} axisLine={false} tickLine={false} tickFormatter={(v) => fmtShort(v)} />
+                <YAxis type="category" dataKey="name" tick={axis} axisLine={false} tickLine={false} width={110} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v) => fmtUSD(Number(v))} />
+                <Bar dataKey="value" name={tr('Added', 'أضاف')} fill="hsl(var(--success))" radius={[0, 6, 6, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </SectionCard>
       </div>
-
-      {/* Top accounts */}
-      {topAccountData.length > 0 && (
-        <SectionCard title={t('analytics.topClients')}>
-          <MiniBarChart data={topAccountData} height={160} />
-        </SectionCard>
-      )}
-
-      {/* Largest transaction callout */}
-      {largestTx.req && (
-        <SectionCard title={t('analytics.largestTx')}>
-          <div className="flex items-center justify-between rounded-xl border border-primary/20 bg-primary/5 p-4">
-            <div>
-              <p className="text-sm font-semibold">
-                REQ-{String(largestTx.req.requestNo).padStart(3, '0')}
-              </p>
-              <p className="text-xs text-muted-foreground">{largestTx.req.date} · {largestTx.req.type}</p>
-              <p className="text-xs text-muted-foreground">
-                {largestTx.req.lines.map((l) => l.accountNo).join(', ')}
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="font-mono text-2xl font-bold text-primary">${largestTx.vol.toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground">USD</p>
-            </div>
-          </div>
-        </SectionCard>
-      )}
     </div>
   );
 }

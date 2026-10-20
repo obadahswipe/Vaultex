@@ -1,368 +1,170 @@
 import { useMemo, useState } from 'react';
-import { ArrowUpRight, ArrowDownRight, RefreshCw, WifiOff, Trash2, BellRing } from 'lucide-react';
-import { z } from 'zod';
+import { RefreshCw, Pencil, Check, X } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { PageHint } from '@/components/shared/PageHint';
 import { SectionCard } from '@/components/shared/SectionCard';
 import { TrendChart } from '@/components/shared/TrendChart';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useWorkbookStore } from '@/stores/workbook.store';
-import { useSettingsStore } from '@/stores/settings.store';
+import { Field, NativeSelect } from '@/components/shared/form';
+import { useBooks } from '@/stores/books.store';
+import { useDailyRates } from '@/hooks/useLiveRates';
+import { CURRENCY_LABEL, crossRate, fmtMoney } from '@/lib/data/money';
+import { CURRENCIES, type Currency } from '@/lib/data/types';
 import { useTranslation } from '@/lib/i18n/useTranslation';
-import { AddRateButton } from '@/components/shared/AddRowModals';
-import { useLiveRates } from '@/hooks/useLiveRates';
+import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
-const PAIRS = ['USD/TRY', 'USD/EUR', 'EUR/USD'] as const;
-type Pair = typeof PAIRS[number];
+const FIXED: Currency[] = ['USD', 'USDT', 'AED', 'SAR'];
 
-const alertSchema = z.object({
-  pair: z.string().min(1),
-  condition: z.enum(['above', 'below']),
-  threshold: z.number().gt(0),
-});
+export default function CurrencyPage() {
+  const { tr, lang } = useTranslation();
+  const rates = useBooks((s) => s.rates);
+  const history = useBooks((s) => s.rateHistory);
+  const setRates = useBooks((s) => s.setRates);
+  const { loading, error, updatedAt, refresh } = useDailyRates();
+  const [editing, setEditing] = useState<Currency | null>(null);
+  const [draft, setDraft] = useState('');
+  const [chartCur, setChartCur] = useState<Currency>('TRY');
+  const [conv, setConv] = useState({ amount: '1000', from: 'USD' as Currency, to: 'TRY' as Currency });
 
-function RateAlertsCard() {
-  const { rateAlerts, addRateAlert, removeRateAlert, toggleRateAlert } = useSettingsStore();
-  const [pair, setPair] = useState<string>('USD/TRY');
-  const [condition, setCondition] = useState<'above' | 'below'>('above');
-  const [threshold, setThreshold] = useState('');
-  const [error, setError] = useState('');
+  const weekAgo = useMemo(() => {
+    const target = new Date(); target.setDate(target.getDate() - 7);
+    const iso = target.toISOString().slice(0, 10);
+    return [...history].reverse().find((h) => h.date <= iso)?.rates ?? {};
+  }, [history]);
 
-  const handleAdd = () => {
-    const result = alertSchema.safeParse({ pair, condition, threshold: Number(threshold) });
-    if (!result.success) {
-      setError('Please enter a valid threshold greater than 0.');
-      return;
-    }
-    setError('');
-    addRateAlert({ pair, condition, threshold: result.data.threshold, active: true });
-    setThreshold('');
+  const series = useMemo(() => history
+    .filter((h) => h.rates[chartCur])
+    .map((h) => ({ label: h.date.slice(5), value: Number((1 / (h.rates[chartCur] as number)).toFixed(chartCur === 'TRY' ? 3 : 4)) })), [history, chartCur]);
+
+  const onRefresh = async () => {
+    const ok = await refresh();
+    toast({
+      title: ok ? tr("Today's rates are in", 'وصلت أسعار اليوم') : tr('Could not get the rates', 'تعذّر جلب الأسعار'),
+      description: ok ? undefined : tr('Check your internet and try again. You can also type a rate yourself.', 'تحقق من الإنترنت وحاول مرة أخرى. ويمكنك أيضًا كتابة السعر بنفسك.'),
+      variant: ok ? 'default' : 'destructive',
+    });
   };
 
-  const triggeredAlerts = rateAlerts.filter((a) => a.triggeredAt);
+  const saveEdit = (c: Currency) => {
+    const perUsd = Number(draft);
+    if (perUsd > 0) { setRates({ [c]: 1 / perUsd }); toast({ title: tr('Rate saved', 'تم حفظ السعر') }); }
+    setEditing(null);
+  };
 
-  return (
-    <SectionCard
-      title="Rate Alerts"
-      description="Get notified when an FX rate crosses a threshold"
-    >
-      {/* Triggered banner */}
-      {triggeredAlerts.length > 0 && (
-        <div className="mb-4 flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 px-4 py-3">
-          <BellRing className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-          <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
-            {triggeredAlerts.length} alert{triggeredAlerts.length > 1 ? 's' : ''} triggered!{' '}
-            {triggeredAlerts.map((a) => `${a.pair} ${a.condition} ${a.threshold}`).join(', ')}
-          </p>
-        </div>
-      )}
-
-      {/* Form */}
-      <div className="flex flex-wrap items-end gap-3 mb-4">
-        <div>
-          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Pair</label>
-          <select
-            value={pair}
-            onChange={(e) => setPair(e.target.value)}
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            {PAIRS.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Condition</label>
-          <select
-            value={condition}
-            onChange={(e) => setCondition(e.target.value as 'above' | 'below')}
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="above">Above</option>
-            <option value="below">Below</option>
-          </select>
-        </div>
-        <div>
-          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Threshold</label>
-          <Input
-            type="number"
-            step="0.01"
-            min="0"
-            placeholder="e.g. 32.5"
-            value={threshold}
-            onChange={(e) => setThreshold(e.target.value)}
-            className="w-32"
-          />
-        </div>
-        <Button variant="default" size="sm" onClick={handleAdd}>Add Alert</Button>
-      </div>
-      {error && <p className="mb-3 text-xs text-destructive">{error}</p>}
-
-      {/* Alert list */}
-      {rateAlerts.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-2">No alerts configured.</p>
-      ) : (
-        <div className="space-y-2">
-          {rateAlerts.map((alert) => (
-            <div
-              key={alert.id}
-              className={cn(
-                'flex items-center justify-between rounded-xl border border-border/60 bg-muted/30 px-4 py-3 gap-3',
-                !alert.active && 'opacity-50',
-                alert.triggeredAt && 'border-amber-300 bg-amber-50/50 dark:bg-amber-950/20',
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <Badge variant="secondary" className="font-mono text-xs">{alert.pair}</Badge>
-                <span className="text-sm font-medium capitalize">{alert.condition}</span>
-                <span className="font-mono text-sm font-bold">{alert.threshold}</span>
-                {alert.triggeredAt && (
-                  <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-0.5">
-                    <BellRing className="h-3 w-3" /> Triggered
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {/* Active toggle */}
-                <button
-                  onClick={() => toggleRateAlert(alert.id)}
-                  className={cn(
-                    'relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors',
-                    alert.active ? 'bg-primary' : 'bg-muted',
-                  )}
-                  role="switch"
-                  aria-checked={alert.active}
-                >
-                  <span className={cn('pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform', alert.active ? 'translate-x-4' : 'translate-x-0')} />
-                </button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                  onClick={() => removeRateAlert(alert.id)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </SectionCard>
-  );
-}
-
-export default function Currency() {
-  const { t } = useTranslation();
-  const rates = useWorkbookStore((s) => s.rates);
-  const liveRates = useWorkbookStore((s) => s.liveRates);
-  const { isLive, isLoading, error, secondsAgo, refresh } = useLiveRates();
-
-  const [selectedPair, setSelectedPair] = useState<Pair>('USD/TRY');
-
-  const storeRates = rates;
-  const latest = storeRates[storeRates.length - 1];
-  const first = storeRates[0];
-
-  // Use live rate if available for display (USD/TRY)
-  const liveRate = liveRates['USD/TRY'];
-  const currentRate = selectedPair === 'USD/TRY' && liveRate ? liveRate : latest?.rate ?? 0;
-  const delta = first ? ((currentRate - first.rate) / first.rate) * 100 : 0;
-  const high = Math.max(...storeRates.map((r) => r.rate), currentRate);
-  const low  = Math.min(...storeRates.map((r) => r.rate), currentRate);
-
-  const series = useMemo(
-    () => storeRates.map((r) => ({ label: r.date.slice(5), value: r.rate })),
-    [storeRates],
-  );
+  const converted = Number(conv.amount) * crossRate(conv.from, conv.to, rates);
 
   return (
     <div className="space-y-8">
       <PageHeader
-        title={t('currency.title')}
-        subtitle={t('currency.subtitle2')}
+        title={tr('Exchange rates', 'أسعار الصرف')}
+        subtitle={tr('Vaultex uses these prices to show all your money in dollars.', 'يستخدم فولتكس هذه الأسعار ليعرض كل أموالك بالدولار.')}
         hint={
-          <PageHint id="currency" title={t('hint.currency.title')}>
-            {t('hint.currency.body')}
+          <PageHint id="rates-v2" title={tr('Where do the rates come from?', 'من أين تأتي الأسعار؟')}>
+            {tr('Press "Get today’s rates" to load the daily rates from the European Central Bank. The dirham and riyal are tied to the dollar, so they do not change. You can also type your own rate.', 'اضغط "اجلب أسعار اليوم" لتحميل الأسعار اليومية من البنك المركزي الأوروبي. الدرهم والريال مربوطان بالدولار فلا يتغيران. ويمكنك أيضًا كتابة سعرك.')}
           </PageHint>
         }
         actions={
-          <div className="flex items-center gap-2">
-            {/* Live indicator */}
-            <div className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-card px-3 py-1.5">
-              {isLive ? (
-                <>
-                  <span className="relative flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                  </span>
-                  <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">{t('currency.live')}</span>
-                  {secondsAgo > 0 && (
-                    <span className="text-[10px] text-muted-foreground">
-                      {t('currency.lastUpdated').replace('{s}', String(secondsAgo))}
-                    </span>
-                  )}
-                </>
-              ) : (
-                <>
-                  <WifiOff className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">
-                    {error ? t('currency.fetchError') : t('currency.offline')}
-                  </span>
-                </>
-              )}
-            </div>
-
-            {/* Pair selector */}
-            <div className="flex items-center gap-1 rounded-lg border border-border/60 bg-card p-1">
-              {PAIRS.map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setSelectedPair(p)}
-                  className={cn(
-                    'rounded-md px-2.5 py-1 text-xs font-mono font-semibold transition-colors',
-                    selectedPair === p
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:bg-accent/60',
-                  )}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={refresh}
-              className={cn('h-8 w-8', isLoading && 'animate-spin')}
-              title={t('currency.refresh')}
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
+          <div className="flex flex-col items-end gap-1">
+            <Button variant="gradient" className="gap-1.5" disabled={loading} onClick={onRefresh}>
+              <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />{tr("Get today's rates", 'اجلب أسعار اليوم')}
             </Button>
-
-            <AddRateButton />
+            <span className={cn('text-[11px]', error ? 'text-destructive' : 'text-muted-foreground')}>
+              {updatedAt
+                ? tr(`Updated ${new Date(updatedAt).toLocaleString('en-GB')}`, `آخر تحديث ${new Date(updatedAt).toLocaleString('ar')}`)
+                : tr('Using saved sample rates', 'تُستخدم أسعار تجريبية محفوظة')}
+            </span>
           </div>
         }
       />
 
-      {/* Hero rate display */}
-      <div className="card-glass rounded-2xl p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <span className="font-mono text-sm font-bold uppercase tracking-widest text-muted-foreground">{selectedPair}</span>
-              {isLive && (
-                <span className="flex items-center gap-1.5">
-                  <span className="relative flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                  </span>
-                  <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">{t('currency.live')}</span>
-                </span>
-              )}
-            </div>
-            <div className="flex items-end gap-4 mt-2">
-              <p className="text-6xl font-black tabular-nums tracking-tight leading-none">
-                {currentRate.toFixed(2)}
-              </p>
-              <Badge
-                variant={delta >= 0 ? 'success' : 'destructive'}
-                className={`mb-1 gap-1 text-sm font-bold px-3 py-1 ${delta >= 0 ? 'bg-success/12' : 'bg-destructive/12'}`}
-              >
-                {delta >= 0 ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
-                {delta >= 0 ? '+' : ''}{Math.abs(delta).toFixed(2)}%
-              </Badge>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">{t('currency.sinceStart')}</p>
-          </div>
+      <SectionCard padded={false} title={tr("Today's prices", 'أسعار اليوم')}>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{tr('Currency', 'العملة')}</TableHead>
+              <TableHead className="text-end">{tr('1 US dollar buys', 'الدولار الواحد يساوي')}</TableHead>
+              <TableHead className="hidden text-end sm:table-cell">{tr('1 unit is worth', 'الوحدة الواحدة تساوي')}</TableHead>
+              <TableHead className="hidden text-end md:table-cell">{tr('Change in 7 days', 'التغير خلال 7 أيام')}</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {CURRENCIES.filter((c) => c !== 'USD').map((c) => {
+              const perUsd = 1 / rates[c];
+              const old = weekAgo[c] ? 1 / (weekAgo[c] as number) : undefined;
+              const change = old ? ((perUsd - old) / old) * 100 : undefined;
+              const fixed = FIXED.includes(c);
+              return (
+                <TableRow key={c}>
+                  <TableCell>
+                    <p className="font-medium"><span className="me-2 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] font-bold">{c}</span>{lang === 'ar' ? CURRENCY_LABEL[c].ar : CURRENCY_LABEL[c].en}</p>
+                    {fixed && <p className="text-[11px] text-muted-foreground">{tr('Tied to the dollar', 'مربوط بالدولار')}</p>}
+                  </TableCell>
+                  <TableCell className="text-end font-mono font-semibold" dir="ltr">
+                    {editing === c ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Input autoFocus className="h-8 w-28 text-end" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && saveEdit(c)} />
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-success" onClick={() => saveEdit(c)}><Check className="h-4 w-4" /></Button>
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setEditing(null)}><X className="h-4 w-4" /></Button>
+                      </span>
+                    ) : `${perUsd.toFixed(c === 'TRY' ? 3 : 4)} ${c}`}
+                  </TableCell>
+                  <TableCell className="hidden text-end font-mono sm:table-cell" dir="ltr">{rates[c].toFixed(4)} USD</TableCell>
+                  <TableCell className={cn('hidden text-end font-mono md:table-cell', change == null ? '' : change > 0 ? 'text-destructive' : 'text-success')} dir="ltr">
+                    {change == null ? '—' : `${change > 0 ? '+' : ''}${change.toFixed(2)}%`}
+                  </TableCell>
+                  <TableCell className="text-end">
+                    {editing !== c && (
+                      <Button size="icon" variant="ghost" className="h-8 w-8" title={tr('Type my own rate', 'اكتب سعري')} onClick={() => { setEditing(c); setDraft(perUsd.toFixed(4)); }}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </SectionCard>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-2">
-            <div className="rounded-xl bg-success/8 border border-success/20 px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{t('currency.peak')}</p>
-              <p className="mt-1 text-xl font-bold tabular-nums text-success">{high.toFixed(2)}</p>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <SectionCard
+          className="lg:col-span-2"
+          title={tr(`1 US dollar in ${chartCur} — last 30 days`, `الدولار الواحد بالـ ${chartCur} — آخر 30 يومًا`)}
+          action={
+            <NativeSelect value={chartCur} onChange={(e) => setChartCur(e.target.value as Currency)} className="h-8 w-auto">
+              {(['TRY', 'EUR', 'GBP'] as Currency[]).map((c) => <option key={c} value={c}>{c}</option>)}
+            </NativeSelect>
+          }
+        >
+          <div dir="ltr"><TrendChart data={series} height={240} formatValue={(n) => n.toFixed(chartCur === 'TRY' ? 2 : 4)} /></div>
+        </SectionCard>
+
+        <SectionCard title={tr('Quick converter', 'محوّل سريع')}>
+          <div className="space-y-3">
+            <Field label={tr('Amount', 'المبلغ')}><Input type="number" value={conv.amount} onChange={(e) => setConv({ ...conv, amount: e.target.value })} /></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={tr('From', 'من')}>
+                <NativeSelect value={conv.from} onChange={(e) => setConv({ ...conv, from: e.target.value as Currency })}>
+                  {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </NativeSelect>
+              </Field>
+              <Field label={tr('To', 'إلى')}>
+                <NativeSelect value={conv.to} onChange={(e) => setConv({ ...conv, to: e.target.value as Currency })}>
+                  {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </NativeSelect>
+              </Field>
             </div>
-            <div className="rounded-xl bg-destructive/8 border border-destructive/20 px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{t('currency.trough')}</p>
-              <p className="mt-1 text-xl font-bold tabular-nums text-destructive">{low.toFixed(2)}</p>
+            <div className="rounded-xl bg-primary/5 p-4 text-center">
+              <p className="text-[12px] text-muted-foreground">{tr('You get', 'تحصل على')}</p>
+              <p className="font-mono text-2xl font-bold" dir="ltr">{fmtMoney(Number.isFinite(converted) ? converted : 0, conv.to)}</p>
             </div>
           </div>
-        </div>
+        </SectionCard>
       </div>
-
-      {/* Live rates panel */}
-      {Object.keys(liveRates).length > 0 && (
-        <div className="grid gap-3 sm:grid-cols-3">
-          {Object.entries(liveRates).map(([pair, rate]) => (
-            <SectionCard key={pair} bodyClassName="p-4">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-sm font-semibold">{pair}</span>
-                <Badge variant="secondary" className="gap-1 text-[10px]">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  {t('currency.live')}
-                </Badge>
-              </div>
-              <p className="mt-1.5 text-2xl font-bold tabular-nums">{rate.toFixed(4)}</p>
-            </SectionCard>
-          ))}
-        </div>
-      )}
-
-      <SectionCard
-        title={`${selectedPair} history`}
-        description={`${storeRates.length} ${t('currency.observations').split('·')[0].trim()} · ${first?.date ?? '—'} → ${latest?.date ?? '—'}`}
-      >
-        <TrendChart data={series} height={280} formatValue={(v) => v.toFixed(2)} />
-      </SectionCard>
-
-      <SectionCard
-        title={t('currency.log')}
-        description={t('currency.logDesc')}
-        bodyClassName="p-0"
-      >
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-32">{t('currency.col.date')}</TableHead>
-                <TableHead>{t('currency.col.pair')}</TableHead>
-                <TableHead className="w-32 text-right">{t('currency.col.rate')}</TableHead>
-                <TableHead className="w-40 text-right">Δ</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {[...storeRates].reverse().map((r, i, arr) => {
-                const prev = arr[i + 1];
-                const d = prev ? r.rate - prev.rate : 0;
-                return (
-                  <TableRow key={r.date}>
-                    <TableCell className="font-mono text-xs tabular-nums text-muted-foreground">{r.date}</TableCell>
-                    <TableCell className="font-mono text-sm font-semibold">USD/TRY</TableCell>
-                    <TableCell className="text-right text-sm font-bold tabular-nums">{r.rate.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">
-                      {prev ? (
-                        <span className={cn(
-                          'inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums',
-                          d >= 0 ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive',
-                        )}>
-                          {d >= 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-                          {d >= 0 ? '+' : ''}{d.toFixed(2)}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      </SectionCard>
-
-      <RateAlertsCard />
     </div>
   );
 }

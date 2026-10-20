@@ -1,417 +1,137 @@
+import { useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { Crown, DollarSign, TrendingUp, Plus } from 'lucide-react';
+import { Plus, Crown, PiggyBank, TrendingUp } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { PageHint } from '@/components/shared/PageHint';
-import { StatCard } from '@/components/shared/StatCard';
 import { SectionCard } from '@/components/shared/SectionCard';
+import { StatCard } from '@/components/shared/StatCard';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { mockShareholders, mockCapitalContributions, mockDistributions } from '@/mocks/data/ownership.mock';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Field, NativeSelect, attempt } from '@/components/shared/form';
+import { AccountPicker } from '@/components/shared/AccountPicker';
+import { useBooks } from '@/stores/books.store';
+import { useActingUser, useLedger } from '@/lib/data/hooks';
+import { fmtUSD } from '@/lib/data/money';
+import { isAdmin } from '@/lib/roles';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
-const PIE_COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b'];
-
-function ShareholderAvatar({ name, index }: { name: string; index: number }) {
-  return (
-    <div
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
-      style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }}
-    >
-      {name.charAt(0)}
-    </div>
-  );
-}
-
-function TypeBadge({ type }: { type: string }) {
-  if (type === 'COMPANY') {
-    return (
-      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-        Company
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-muted text-muted-foreground">
-      Individual
-    </span>
-  );
-}
-
-function ShareClassBadge({ cls }: { cls: string }) {
-  if (cls === 'PREFERRED') {
-    return (
-      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
-        Preferred
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-muted text-muted-foreground">
-      Ordinary
-    </span>
-  );
-}
-
-function ContributionTypeBadge({ type }: { type: string }) {
-  if (type === 'INITIAL_CAPITAL') {
-    return (
-      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-        Initial Capital
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-      Additional Capital
-    </span>
-  );
-}
-
-function DistributionStatusBadge({ status }: { status: string }) {
-  if (status === 'PAID') {
-    return (
-      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-        Paid
-      </span>
-    );
-  }
-  if (status === 'APPROVED') {
-    return (
-      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-        Approved
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-muted text-muted-foreground">
-      Draft
-    </span>
-  );
-}
+const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#0ea5e9'];
 
 export default function Ownership() {
-  const totalCapital     = mockCapitalContributions.reduce((s, c) => s + c.amount_usd, 0);
-  const totalDistributed = mockDistributions.reduce((s, d) => s + d.distributable_amount, 0);
+  const { tr, nameOf } = useTranslation();
+  const me = useActingUser();
+  const owners = useBooks((s) => s.owners);
+  const addCapital = useBooks((s) => s.addCapital);
+  const addOwner = useBooks((s) => s.addOwner);
+  const { balances, sheet } = useLedger();
+  const [capOpen, setCapOpen] = useState(false);
+  const [ownerOpen, setOwnerOpen] = useState(false);
+  const [cap, setCap] = useState({ ownerId: owners[0]?.id ?? '', amount: '', to: '1201' });
+  const [o, setO] = useState({ name: '', arabic: '', share: '' });
 
-  const pieData = mockShareholders.map(sh => ({
-    name: sh.full_name,
-    value: sh.ownership_percent,
-  }));
-
-  // Last distribution summary for hero
-  const lastDist = mockDistributions[0];
+  const totalShares = owners.reduce((s, x) => s + x.sharePercent, 0);
+  const companyValue = sheet.owners + sheet.profit + sheet.currencyEffect;
+  const pie = owners.map((x) => ({ name: nameOf(x), value: x.sharePercent }));
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-8">
       <PageHeader
-        title="Ownership & Shareholders"
-        subtitle="Shareholder registry, capital contributions, and profit distributions"
-        actions={
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Shareholder
-          </Button>
-        }
+        title={tr('Owners', 'المالكون')}
+        subtitle={tr('Who owns the company, and the money they put in.', 'من يملك الشركة، والمال الذي وضعوه فيها.')}
+        hint={<PageHint id="owners-v2" title={tr("The owners' share", 'حصة المالكين')}>{tr("The owners' share is what is left after you pay everyone you owe. Each owner gets their part of it.", 'حصة المالكين هي ما يبقى بعد أن تدفع لكل من تدين لهم. وكل مالك يأخذ جزءه منها.')}</PageHint>}
+        actions={isAdmin(me.role) && (
+          <div className="flex gap-2">
+            <Button variant="outline" className="gap-1.5" onClick={() => setOwnerOpen(true)}><Plus className="h-4 w-4" />{tr('Add an owner', 'أضف مالكًا')}</Button>
+            <Button variant="gradient" className="gap-1.5" onClick={() => setCapOpen(true)}><PiggyBank className="h-4 w-4" />{tr('Owner puts in money', 'المالك يضع مالًا')}</Button>
+          </div>
+        )}
       />
 
-      <PageHint id="ownership" icon="👑" title="Ownership Module">
-        Manage shareholder records, track capital contributions, and record profit distributions.
-        All amounts are in USD. The pie chart reflects current equity ownership percentages.
-      </PageHint>
-
-      {/* Gradient hero */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-700 p-6 text-white shadow-lg">
-        <div className="relative z-10">
-          <p className="text-sm font-medium opacity-80 mb-1">Total Paid-In Capital</p>
-          <p className="text-4xl font-bold tracking-tight">${totalCapital.toLocaleString()}</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <span className="rounded-full bg-white/20 px-3 py-1 text-sm font-medium backdrop-blur-sm">
-              {mockShareholders.length} Shareholders
-            </span>
-            {lastDist && (
-              <span className="rounded-full bg-white/20 px-3 py-1 text-sm font-medium backdrop-blur-sm">
-                Last Distribution: $900K (2025)
-              </span>
-            )}
-          </div>
-        </div>
-        <div aria-hidden className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
-        <div aria-hidden className="pointer-events-none absolute -bottom-8 right-32 h-32 w-32 rounded-full bg-violet-400/20 blur-2xl" />
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard label={tr("Owners' share today", 'حصة المالكين اليوم')} value={fmtUSD(companyValue)} icon={Crown} accent="violet" deltaLabel={tr('What you own minus what you owe', 'ما تملكه ناقص ما عليك')} />
+        <StatCard label={tr('Money owners put in', 'المال الذي وضعه المالكون')} value={fmtUSD(owners.reduce((s, x) => s + (balances[x.capitalAccountCode] ?? 0), 0))} icon={PiggyBank} accent="blue" deltaLabel={tr(`${owners.length} owners`, `${owners.length} مالكين`)} />
+        <StatCard label={tr('Profit not shared yet', 'أرباح لم تُوزّع')} value={fmtUSD(sheet.profit)} icon={TrendingUp} accent={sheet.profit >= 0 ? 'green' : 'pink'} deltaLabel={tr('Since the books started', 'منذ بدء الدفاتر')} />
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard
-          label="Shareholders"
-          value={mockShareholders.length}
-          icon={Crown}
-          accent="blue"
-          deltaLabel="registered shareholders"
-        />
-        <StatCard
-          label="Total Capital"
-          value={`$${totalCapital.toLocaleString()}`}
-          icon={DollarSign}
-          accent="green"
-          deltaLabel="paid-in capital (USD)"
-        />
-        <StatCard
-          label="Distributed All Time"
-          value={`$${totalDistributed.toLocaleString()}`}
-          icon={TrendingUp}
-          accent="violet"
-          deltaLabel="total profit distributed"
-        />
-      </div>
-
-      {/* Tabs */}
-      <Tabs defaultValue="shareholders">
-        <TabsList>
-          <TabsTrigger value="shareholders">Shareholders</TabsTrigger>
-          <TabsTrigger value="capital">Capital</TabsTrigger>
-          <TabsTrigger value="distributions">Distributions</TabsTrigger>
-        </TabsList>
-
-        {/* ── Shareholders tab ── */}
-        <TabsContent value="shareholders" className="mt-4">
-          <div className="grid grid-cols-5 gap-6">
-            {/* Left: Pie chart */}
-            <div className="col-span-5 lg:col-span-2">
-              <SectionCard title="Ownership Structure" description="Equity split by shareholder">
-                <div className="flex flex-col items-center">
-                  <ResponsiveContainer width="100%" height={220}>
-                    <PieChart>
-                      <Pie
-                        data={pieData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={65}
-                        outerRadius={100}
-                        dataKey="value"
-                        paddingAngle={2}
-                      >
-                        {pieData.map((_, i) => (
-                          <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(v) => [`${v}%`, 'Ownership']}
-                        contentStyle={{
-                          borderRadius: '8px',
-                          fontSize: '12px',
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-
-                  {/* Legend */}
-                  <div className="mt-2 w-full space-y-2">
-                    {mockShareholders.map((sh, i) => (
-                      <div key={sh.id} className="flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="h-2.5 w-2.5 rounded-full shrink-0"
-                            style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}
-                          />
-                          <span className="text-foreground">{sh.full_name}</span>
-                        </div>
-                        <span className="font-bold text-foreground">{sh.ownership_percent}%</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </SectionCard>
-            </div>
-
-            {/* Right: Table */}
-            <div className="col-span-5 lg:col-span-3">
-              <SectionCard
-                title="Shareholder Registry"
-                description="All registered shareholders and their equity stakes"
-                padded={false}
-              >
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Shareholder</TableHead>
-                      <TableHead>Nationality</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Share Class</TableHead>
-                      <TableHead className="text-right">Ownership</TableHead>
-                      <TableHead className="text-right">Contributed</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {mockShareholders.map((sh, i) => (
-                      <TableRow key={sh.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <ShareholderAvatar name={sh.full_name} index={i} />
-                            <div>
-                              <p className="font-medium text-foreground">{sh.full_name}</p>
-                              {(sh as typeof sh & { company_name?: string }).company_name && (
-                                <p className="text-xs text-muted-foreground">
-                                  {(sh as typeof sh & { company_name?: string }).company_name}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">{sh.nationality}</TableCell>
-                        <TableCell>
-                          <TypeBadge type={sh.shareholder_type} />
-                        </TableCell>
-                        <TableCell>
-                          <ShareClassBadge cls={sh.share_class} />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <span
-                            className="font-bold text-base"
-                            style={{ color: PIE_COLORS[i % PIE_COLORS.length] }}
-                          >
-                            {sh.ownership_percent}%
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <span className="font-mono text-sm font-medium text-foreground">
-                            ${sh.total_contributed_usd.toLocaleString()}
-                          </span>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </SectionCard>
-            </div>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <SectionCard title={tr('Who owns what', 'من يملك ماذا')}>
+          <div className="h-56" dir="ltr">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={pie} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90} paddingAngle={2}>
+                  {pie.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                </Pie>
+                <Tooltip formatter={(v) => `${v}%`} />
+              </PieChart>
+            </ResponsiveContainer>
           </div>
-        </TabsContent>
-
-        {/* ── Capital tab ── */}
-        <TabsContent value="capital" className="mt-4">
-          <SectionCard
-            title="Capital Contributions"
-            description="All capital injections from shareholders"
-            padded={false}
-          >
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Shareholder</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Currency</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">USD Equiv.</TableHead>
-                  <TableHead>Bank Reference</TableHead>
+          {totalShares !== 100 && <p className="mt-2 text-[12px] text-warning">{tr(`Shares add up to ${totalShares}%, not 100%.`, `مجموع الحصص ${totalShares}% وليس 100%.`)}</p>}
+        </SectionCard>
+        <SectionCard className="lg:col-span-2" padded={false}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{tr('Owner', 'المالك')}</TableHead>
+                <TableHead className="text-end">{tr('Share', 'الحصة')}</TableHead>
+                <TableHead className="text-end">{tr('Money put in', 'المال المدفوع')}</TableHead>
+                <TableHead className="text-end">{tr('Worth today', 'القيمة اليوم')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {owners.map((x, i) => (
+                <TableRow key={x.id}>
+                  <TableCell className="font-medium"><span className="me-2 inline-block h-2.5 w-2.5 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />{nameOf(x)}</TableCell>
+                  <TableCell className="text-end">{x.sharePercent}%</TableCell>
+                  <TableCell className="text-end font-mono">{fmtUSD(balances[x.capitalAccountCode] ?? 0)}</TableCell>
+                  <TableCell className="text-end font-mono font-semibold">{fmtUSD((companyValue * x.sharePercent) / 100)}</TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {mockCapitalContributions.map(cc => (
-                  <TableRow key={cc.id}>
-                    <TableCell className="font-medium text-foreground">{cc.shareholder_name}</TableCell>
-                    <TableCell>
-                      <ContributionTypeBadge type={cc.contribution_type} />
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-xs">{cc.contribution_date}</TableCell>
-                    <TableCell className="text-muted-foreground">{cc.currency}</TableCell>
-                    <TableCell className="text-right">
-                      <span className="font-mono text-sm text-foreground">
-                        {cc.amount.toLocaleString()}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span className="font-mono text-sm font-bold text-foreground">
-                        ${cc.amount_usd.toLocaleString()}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="font-mono text-xs text-muted-foreground">{cc.bank_reference}</span>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+              ))}
+            </TableBody>
+          </Table>
+        </SectionCard>
+      </div>
 
-            {/* Total footer row */}
-            <div className="flex items-center justify-between border-t border-border/40 px-6 py-4">
-              <span className="text-sm font-semibold text-foreground">Total Capital</span>
-              <span className="font-mono text-base font-bold text-foreground">
-                ${totalCapital.toLocaleString()}
-              </span>
-            </div>
-          </SectionCard>
-        </TabsContent>
-
-        {/* ── Distributions tab ── */}
-        <TabsContent value="distributions" className="mt-4 space-y-4">
-          <div className="flex justify-end">
-            <Button size="sm" variant="outline">
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              New Distribution
-            </Button>
+      <Dialog open={capOpen} onOpenChange={setCapOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{tr('Owner puts in money', 'المالك يضع مالًا')}</DialogTitle>
+            <DialogDescription>{tr('The money goes into a bank or cash box, and the owner’s money in the company goes up.', 'يدخل المال إلى بنك أو صندوق، ويزيد مال المالك في الشركة.')}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <Field label={tr('Which owner', 'أي مالك')}>
+              <NativeSelect value={cap.ownerId} onChange={(e) => setCap({ ...cap, ownerId: e.target.value })}>
+                {owners.map((x) => <option key={x.id} value={x.id}>{nameOf(x)}</option>)}
+              </NativeSelect>
+            </Field>
+            <Field label={tr('How much (USD)', 'كم (دولار)')}><Input type="number" value={cap.amount} onChange={(e) => setCap({ ...cap, amount: e.target.value })} /></Field>
+            <Field label={tr('Into', 'إلى')}><AccountPicker value={cap.to} onChange={(v) => setCap({ ...cap, to: v })} categories={['banks', 'funds']} /></Field>
           </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setCapOpen(false)}>{tr('Cancel', 'إلغاء')}</Button>
+            <Button variant="gradient" disabled={!(Number(cap.amount) > 0) || !cap.to} onClick={() => { if (attempt(() => addCapital(cap.ownerId, Number(cap.amount), cap.to, me.email), tr('Written in the books', 'سُجّل في الدفاتر'))) setCapOpen(false); }}>{tr('Save', 'حفظ')}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
-          {mockDistributions.map(dist => (
-            <SectionCard key={dist.id} padded={false}>
-              {/* Header row */}
-              <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-border/40">
-                <div>
-                  <p className="font-semibold text-foreground">
-                    {dist.period_start} → {dist.period_end}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    Distribution date: {dist.distribution_date}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-6">
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground">Total Profit</p>
-                    <p className="mt-0.5 font-bold font-mono text-foreground">
-                      ${dist.total_profit.toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground">Distributed</p>
-                    <p className="mt-0.5 font-bold font-mono text-emerald-600 dark:text-emerald-400">
-                      ${dist.distributable_amount.toLocaleString()}
-                    </p>
-                  </div>
-                  <DistributionStatusBadge status={dist.status} />
-                </div>
-              </div>
-
-              {/* Breakdown grid */}
-              <div className="grid grid-cols-1 gap-3 p-6 sm:grid-cols-2">
-                {dist.items.map((item, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between rounded-xl border border-border/50 bg-muted/30 px-4 py-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
-                        style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}
-                      >
-                        {item.shareholder.charAt(0)}
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{item.shareholder}</p>
-                        <p className="text-xs text-muted-foreground">{item.percent}% equity</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold font-mono text-emerald-600 dark:text-emerald-400">
-                        ${item.amount.toLocaleString()}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{item.status}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </SectionCard>
-          ))}
-        </TabsContent>
-      </Tabs>
+      <Dialog open={ownerOpen} onOpenChange={setOwnerOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{tr('Add an owner', 'أضف مالكًا')}</DialogTitle>
+            <DialogDescription>{tr('Remember to change the other owners’ shares so they add up to 100%.', 'تذكّر تعديل حصص المالكين الآخرين ليصبح المجموع 100%.')}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={tr('Name', 'الاسم')}><Input value={o.name} onChange={(e) => setO({ ...o, name: e.target.value })} /></Field>
+            <Field label={tr('Name in Arabic', 'الاسم بالعربية')}><Input dir="rtl" value={o.arabic} onChange={(e) => setO({ ...o, arabic: e.target.value })} /></Field>
+            <Field label={tr('Share (%)', 'الحصة (%)')}><Input type="number" value={o.share} onChange={(e) => setO({ ...o, share: e.target.value })} /></Field>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setOwnerOpen(false)}>{tr('Cancel', 'إلغاء')}</Button>
+            <Button variant="gradient" disabled={!o.name.trim()} onClick={() => { if (attempt(() => addOwner({ name: o.name.trim(), arabic: o.arabic || undefined, sharePercent: Number(o.share) || 0, joined: new Date().toISOString().slice(0, 10) }), tr('Owner added', 'تمت إضافة المالك'))) { setOwnerOpen(false); setO({ name: '', arabic: '', share: '' }); } }}>{tr('Add', 'أضف')}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

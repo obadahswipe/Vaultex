@@ -1,151 +1,59 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import * as XLSX from 'xlsx';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SectionCard } from '@/components/shared/SectionCard';
+import { Segmented } from '@/components/shared/form';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Pagination } from '@/components/shared/Pagination';
-import { PageLoader } from '@/components/shared/LoadingSpinner';
-import { getClientTrades, getClientAccounts } from '@/api/clientPortal.api';
-import { useClientAuthStore } from '@/stores/clientAuth.store';
-import { fmt, fmtDate } from '@/lib/utils';
-import { Download } from 'lucide-react';
-
-const LIMIT = 20;
+import { fmtMoney } from '@/lib/data/money';
+import { useTranslation } from '@/lib/i18n/useTranslation';
+import { cn } from '@/lib/utils';
+import { useMe } from './useMe';
 
 export default function ClientTrades() {
-  const { selectedMt5Id } = useClientAuthStore();
-  const [offset, setOffset]   = useState(0);
-  const [symbol, setSymbol]   = useState('ALL');
-  const [direction, setDir]   = useState('ALL');
-  const [startDate, setStart] = useState('');
-  const [endDate, setEnd]     = useState('');
-
-  const { data: accounts = [] } = useQuery({ queryKey: ['client-accounts'], queryFn: getClientAccounts });
-  const selectedAccount = accounts.find((a) => a.id === selectedMt5Id) ?? accounts[0];
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['client-trades', selectedMt5Id, symbol, direction, startDate, endDate, offset],
-    queryFn: () => getClientTrades({
-      mt5_login:  selectedAccount?.mt5_login,
-      symbol:     symbol    === 'ALL' ? undefined : symbol,
-      direction:  direction === 'ALL' ? undefined : direction,
-      start_date: startDate || undefined,
-      end_date:   endDate   || undefined,
-      limit: LIMIT, offset,
-    }),
-    enabled: !!selectedAccount,
-  });
-
-  const reset = () => setOffset(0);
-
-  const exportXLSX = () => {
-    const rows = (data?.trades ?? []).map((t) => ({
-      Ticket: t.ticket, 'MT5 Login': t.mt5_login, Symbol: t.symbol, Direction: t.direction,
-      Volume: t.volume, 'Open Price': t.open_price, 'Close Price': t.close_price,
-      'P&L (USD)': t.profit, Swap: t.swap, Commission: t.commission, 'Close Time': fmtDate(t.close_time),
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Trades');
-    XLSX.writeFile(wb, `my-trades-${new Date().toISOString().slice(0, 10)}.xlsx`);
-  };
-
-  if (isLoading) return <PageLoader />;
-
-  const trades = data?.trades ?? [];
+  const { tr } = useTranslation();
+  const me = useMe();
+  const [view, setView] = useState<'open' | 'closed'>('open');
+  const list = (view === 'open' ? me.open : me.trades.filter((t) => t.status === 'closed')).slice().reverse();
+  const closedResult = me.trades.filter((t) => t.status === 'closed').reduce((s, t) => s + t.profit, 0);
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">My Trades</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Closed trade history</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={exportXLSX}>
-          <Download className="h-4 w-4 mr-2" />Export Excel
-        </Button>
+      <div>
+        <h1 className="text-[1.75rem] font-bold tracking-tight">{tr('My trades', 'صفقاتي')}</h1>
+        <p className="mt-1 text-[14px] text-muted-foreground">
+          {tr(`All my closed trades together: `, `كل صفقاتي المغلقة معًا: `)}
+          <span className={cn('font-mono font-semibold', closedResult >= 0 ? 'text-success' : 'text-destructive')} dir="ltr">{fmtMoney(closedResult)}</span>
+        </p>
       </div>
-
-      <Card>
-        <CardHeader className="pb-3 pt-4 px-4">
-          <div className="flex flex-wrap gap-3">
-            <Select value={symbol} onValueChange={(v) => { setSymbol(v); reset(); }}>
-              <SelectTrigger className="w-36 h-9"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Symbols</SelectItem>
-                {['EURUSD', 'GBPUSD', 'XAUUSD', 'USDJPY', 'USDCHF', 'AUDUSD'].map((s) => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={direction} onValueChange={(v) => { setDir(v); reset(); }}>
-              <SelectTrigger className="w-28 h-9"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Dirs</SelectItem>
-                <SelectItem value="BUY">BUY</SelectItem>
-                <SelectItem value="SELL">SELL</SelectItem>
-              </SelectContent>
-            </Select>
-            <Input type="date" className="w-40 h-9" value={startDate} onChange={(e) => { setStart(e.target.value); reset(); }} />
-            <Input type="date" className="w-40 h-9" value={endDate}   onChange={(e) => { setEnd(e.target.value);   reset(); }} />
-          </div>
-        </CardHeader>
-
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-24">Ticket</TableHead>
-                  <TableHead className="w-24">Symbol</TableHead>
-                  <TableHead className="w-20">Dir</TableHead>
-                  <TableHead className="w-20">Volume</TableHead>
-                  <TableHead className="w-28">Open</TableHead>
-                  <TableHead className="w-28">Close</TableHead>
-                  <TableHead className="w-28">P&amp;L</TableHead>
-                  <TableHead className="w-24">Swap</TableHead>
-                  <TableHead className="w-28">Commission</TableHead>
-                  <TableHead className="w-32">Close Time</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {trades.length ? trades.map((t) => (
-                  <TableRow key={t.id}>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{t.ticket}</TableCell>
-                    <TableCell className="font-semibold text-foreground">{t.symbol}</TableCell>
-                    <TableCell>
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
-                        t.direction === 'BUY'
-                          ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                          : 'bg-red-500/10 text-red-600 dark:text-red-400'
-                      }`}>{t.direction}</span>
-                    </TableCell>
-                    <TableCell className="font-mono">{t.volume.toFixed(2)}</TableCell>
-                    <TableCell className="font-mono text-sm">{t.open_price}</TableCell>
-                    <TableCell className="font-mono text-sm">{t.close_price}</TableCell>
-                    <TableCell className={`font-mono font-semibold ${t.profit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-destructive'}`}>
-                      {t.profit >= 0 ? '+' : ''}${fmt(t.profit)}
-                    </TableCell>
-                    <TableCell className="font-mono text-sm text-muted-foreground">${fmt(t.swap)}</TableCell>
-                    <TableCell className="font-mono text-sm text-muted-foreground">${fmt(t.commission)}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{fmtDate(t.close_time)}</TableCell>
-                  </TableRow>
-                )) : (
-                  <TableRow>
-                    <TableCell colSpan={10} className="text-center text-muted-foreground py-12">
-                      No trades found
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-          <Pagination offset={offset} limit={LIMIT} hasMore={trades.length === LIMIT} onChange={setOffset} />
-        </CardContent>
-      </Card>
+      <Segmented value={view} onChange={setView} options={[
+        { value: 'open', label: tr('Open now', 'مفتوحة الآن'), count: me.open.length },
+        { value: 'closed', label: tr('Closed', 'مغلقة') },
+      ]} />
+      <SectionCard padded={false}>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{tr('What', 'ماذا')}</TableHead>
+              <TableHead className="text-end">{tr('Lots', 'لوت')}</TableHead>
+              <TableHead className="hidden text-end sm:table-cell">{tr('Price', 'السعر')}</TableHead>
+              <TableHead className="text-end">{tr('Result', 'النتيجة')}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {list.map((t) => (
+              <TableRow key={t.id}>
+                <TableCell>
+                  <span className={cn('me-1.5 rounded px-1.5 py-0.5 text-[11px] font-bold', t.side === 'buy' ? 'bg-emerald-500/12 text-emerald-600' : 'bg-red-500/12 text-red-600')}>{t.side === 'buy' ? tr('BUY', 'شراء') : tr('SELL', 'بيع')}</span>
+                  <span className="font-mono font-semibold">{t.symbol}</span>
+                  <p className="text-[11px] text-muted-foreground">#{t.ticket} · {(t.closedAt ?? t.openedAt).slice(0, 16).replace('T', ' ')}</p>
+                </TableCell>
+                <TableCell className="text-end">{t.lots}</TableCell>
+                <TableCell className="hidden text-end font-mono text-[12px] sm:table-cell" dir="ltr">{t.openPrice} → {t.closePrice ?? t.currentPrice}</TableCell>
+                <TableCell className={cn('text-end font-mono font-semibold', t.profit >= 0 ? 'text-success' : 'text-destructive')} dir="ltr">{fmtMoney(t.profit)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        {list.length === 0 && <p className="px-6 py-12 text-center text-[13px] text-muted-foreground">{tr('No trades here.', 'لا صفقات هنا.')}</p>}
+      </SectionCard>
     </div>
   );
 }

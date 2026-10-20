@@ -18,10 +18,6 @@ const DemoPage         = lazy(() => import('@/pages/Demo'));
 const Login            = lazy(() => import('@/pages/Login'));
 const Dashboard        = lazy(() => import('@/pages/Dashboard'));
 const Entries          = lazy(() => import('@/pages/Entries'));
-const Report           = lazy(() => import('@/pages/Report'));
-const Data             = lazy(() => import('@/pages/Data'));
-const Opening          = lazy(() => import('@/pages/Opening'));
-const Vouchers         = lazy(() => import('@/pages/Vouchers'));
 const Currency         = lazy(() => import('@/pages/Currency'));
 const Clients              = lazy(() => import('@/pages/Clients'));
 const IBManagement         = lazy(() => import('@/pages/IBManagement'));
@@ -30,8 +26,6 @@ const Reconciliation       = lazy(() => import('@/pages/Reconciliation'));
 const Treasury             = lazy(() => import('@/pages/Treasury'));
 const AgingReport          = lazy(() => import('@/pages/AgingReport'));
 const OperationsAnalytics  = lazy(() => import('@/pages/OperationsAnalytics'));
-const Payments             = lazy(() => import('@/pages/Payments'));
-const Journals             = lazy(() => import('@/pages/Journals'));
 const Trades               = lazy(() => import('@/pages/Trades'));
 const Reports              = lazy(() => import('@/pages/Reports'));
 const IBCommissions        = lazy(() => import('@/pages/IBCommissions'));
@@ -98,10 +92,13 @@ export default function App() {
             <Route element={<AppLayout />}>
               <Route path="/" element={<Dashboard />} />
               <Route path="/entries" element={<Entries />} />
-              <Route path="/report" element={<Report />} />
-              <Route path="/data" element={<Data />} />
-              <Route path="/opening" element={<Opening />} />
-              <Route path="/vouchers" element={<Vouchers />} />
+              {/* Old pages now live inside the new ones */}
+              <Route path="/report" element={<Navigate to="/chart-of-accounts" replace />} />
+              <Route path="/data" element={<Navigate to="/chart-of-accounts" replace />} />
+              <Route path="/opening" element={<Navigate to="/chart-of-accounts" replace />} />
+              <Route path="/vouchers" element={<Navigate to="/entries" replace />} />
+              <Route path="/journals" element={<Navigate to="/entries" replace />} />
+              <Route path="/payments" element={<Navigate to="/operations?tab=voucher" replace />} />
               <Route path="/currency" element={<Currency />} />
               <Route path="/clients"        element={<Clients />} />
               <Route path="/ib-mgmt"        element={<IBManagement />} />
@@ -110,14 +107,12 @@ export default function App() {
               <Route path="/treasury"       element={<Treasury />} />
               <Route path="/aging"          element={<AgingReport />} />
               <Route path="/ops-analytics"  element={<OperationsAnalytics />} />
-              <Route path="/payments"       element={<Payments />} />
-              <Route path="/journals"       element={<Journals />} />
               <Route path="/trades"         element={<Trades />} />
               <Route path="/reports"        element={<Reports />} />
               <Route path="/ib-commissions" element={<IBCommissions />} />
-              <Route path="/eod"            element={<AdminOnly><EOD /></AdminOnly>} />
+              <Route path="/eod"            element={<EOD />} />
               <Route path="/chart-of-accounts" element={<ChartOfAccounts />} />
-              <Route path="/users"          element={<AdminOnly><Users /></AdminOnly>} />
+              <Route path="/users"          element={<Users />} />
               <Route path="/profile"        element={<Profile />} />
               {/* New platform modules */}
               <Route path="/branches"   element={<Branches />} />

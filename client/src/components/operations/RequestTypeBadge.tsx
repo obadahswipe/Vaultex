@@ -1,39 +1,28 @@
+import { ArrowDownLeft, ArrowUpRight, ArrowLeftRight, Receipt, Network } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { RequestType } from '@/lib/workbook';
+import type { RequestType } from '@/lib/data/types';
+import { REQUEST_TYPE_LABEL } from '@/lib/data/labels';
 import { useTranslation } from '@/lib/i18n/useTranslation';
-import type { TranslationKey } from '@/lib/i18n/translations';
 
-const typeConfig: Record<RequestType, { color: string; labelKey: TranslationKey }> = {
-  deposit:       { color: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300', labelKey: 'req.type.deposit' },
-  withdrawal:    { color: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',         labelKey: 'req.type.withdrawal' },
-  ib_withdrawal: { color: 'bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300',     labelKey: 'req.type.ib_withdrawal' },
-  ib_deposit:    { color: 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300',                 labelKey: 'req.type.ib_deposit' },
-  transfer_to:   { color: 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300',     labelKey: 'req.type.transfer_to' },
-  transfer_from: { color: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300',     labelKey: 'req.type.transfer_from' },
-  expense:       { color: 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300',                 labelKey: 'req.type.expense' },
+export const TYPE_STYLE: Record<RequestType, { icon: typeof Receipt; cls: string }> = {
+  deposit:       { icon: ArrowDownLeft,  cls: 'text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300' },
+  withdrawal:    { icon: ArrowUpRight,   cls: 'text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300' },
+  ib_deposit:    { icon: Network,        cls: 'text-sky-700 bg-sky-50 dark:bg-sky-950/40 dark:text-sky-300' },
+  ib_withdrawal: { icon: Network,        cls: 'text-orange-700 bg-orange-50 dark:bg-orange-950/40 dark:text-orange-300' },
+  transfer_to:   { icon: ArrowLeftRight, cls: 'text-violet-700 bg-violet-50 dark:bg-violet-950/40 dark:text-violet-300' },
+  transfer_from: { icon: ArrowLeftRight, cls: 'text-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 dark:text-indigo-300' },
+  expense:       { icon: Receipt,        cls: 'text-red-700 bg-red-50 dark:bg-red-950/40 dark:text-red-300' },
 };
 
-interface RequestTypeBadgeProps {
-  type: RequestType;
-  size?: 'sm' | 'xs';
-  className?: string;
-}
-
-export function RequestTypeBadge({ type, size = 'sm', className }: RequestTypeBadgeProps) {
-  const { t } = useTranslation();
-  const cfg = typeConfig[type];
+export function RequestTypeBadge({ type, className }: { type: RequestType; className?: string }) {
+  const { tr } = useTranslation();
+  const l = REQUEST_TYPE_LABEL[type];
+  const s = TYPE_STYLE[type];
+  const Icon = s.icon;
   return (
-    <span className={cn(
-      'inline-block rounded-full font-semibold',
-      size === 'xs' ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-0.5 text-xs',
-      cfg.color,
-      className,
-    )}>
-      {t(cfg.labelKey)}
+    <span className={cn('inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold whitespace-nowrap', s.cls, className)}>
+      <Icon className="h-3 w-3" />
+      {tr(l.en, l.ar)}
     </span>
   );
-}
-
-export function getTypeColor(type: RequestType): string {
-  return typeConfig[type]?.color ?? 'bg-muted text-muted-foreground';
 }

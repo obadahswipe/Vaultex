@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { LayoutGrid, User, Network } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 type Portal = 'admin' | 'client' | 'ib';
 
@@ -14,8 +15,8 @@ const CONFIG: Record<Portal, {
   glowColor: string;
   icon: typeof User;
   iconBg: string;
-  label: string;
-  tagline: string;
+  label: { en: string; ar: string };
+  tagline: { en: string; ar: string };
   barColor: string;
 }> = {
   admin: {
@@ -23,8 +24,8 @@ const CONFIG: Record<Portal, {
     glowColor: 'shadow-[0_0_80px_20px_rgba(99,102,241,0.35)]',
     icon: LayoutGrid,
     iconBg: 'bg-gradient-to-br from-blue-500 to-violet-600',
-    label: 'Admin Panel',
-    tagline: 'Your management workspace is ready.',
+    label: { en: 'Your company', ar: 'شركتك' },
+    tagline: { en: 'Everything is ready for you.', ar: 'كل شيء جاهز لك.' },
     barColor: 'bg-gradient-to-r from-blue-400 to-violet-400',
   },
   client: {
@@ -32,8 +33,8 @@ const CONFIG: Record<Portal, {
     glowColor: 'shadow-[0_0_80px_20px_rgba(16,185,129,0.30)]',
     icon: User,
     iconBg: 'bg-gradient-to-br from-emerald-400 to-teal-600',
-    label: 'Client Portal',
-    tagline: 'Your trading account is ready.',
+    label: { en: 'Client page', ar: 'صفحة الزبون' },
+    tagline: { en: 'Your money and trades are ready.', ar: 'أموالك وصفقاتك جاهزة.' },
     barColor: 'bg-gradient-to-r from-emerald-400 to-teal-400',
   },
   ib: {
@@ -41,8 +42,8 @@ const CONFIG: Record<Portal, {
     glowColor: 'shadow-[0_0_80px_20px_rgba(245,158,11,0.30)]',
     icon: Network,
     iconBg: 'bg-gradient-to-br from-amber-400 to-orange-600',
-    label: 'IB Portal',
-    tagline: 'Your commission dashboard is ready.',
+    label: { en: 'Partner page', ar: 'صفحة الشريك' },
+    tagline: { en: 'Your clients and pay are ready.', ar: 'زبائنك وأجرك جاهزون.' },
     barColor: 'bg-gradient-to-r from-amber-400 to-orange-400',
   },
 };
@@ -50,6 +51,7 @@ const CONFIG: Record<Portal, {
 export function PortalEntryScreen({ portal, onComplete }: PortalEntryScreenProps) {
   const cfg = CONFIG[portal];
   const Icon = cfg.icon;
+  const { tr } = useTranslation();
 
   const [phase, setPhase] = useState<0 | 1 | 2 | 3 | 4 | 5>(0);
   // 0 = just mounted (fading in overlay)
@@ -136,7 +138,7 @@ export function PortalEntryScreen({ portal, onComplete }: PortalEntryScreenProps
         style={phase >= 2 ? { animation: 'portal-slide-up 0.5s ease-out forwards' } : {}}
       >
         <h1 className="text-center text-4xl font-extrabold tracking-tight text-white sm:text-5xl">
-          {cfg.label}
+          {tr(cfg.label.en, cfg.label.ar)}
         </h1>
       </div>
 
@@ -148,7 +150,7 @@ export function PortalEntryScreen({ portal, onComplete }: PortalEntryScreenProps
         )}
       >
         <p className="text-center text-[15px] font-medium text-white/60">
-          {cfg.tagline}
+          {tr(cfg.tagline.en, cfg.tagline.ar)}
         </p>
       </div>
 

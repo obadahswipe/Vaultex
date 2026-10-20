@@ -1,335 +1,207 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import * as XLSX from 'xlsx';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
+import { useMemo, useState } from 'react';
+import { Download, TrendingUp, TrendingDown, Scale, Printer } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { PageHint } from '@/components/shared/PageHint';
-import { useTranslation } from '@/lib/i18n/useTranslation';
 import { SectionCard } from '@/components/shared/SectionCard';
-import { Label } from '@/components/ui/label';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PageLoader } from '@/components/shared/LoadingSpinner';
-import { StatusBadge } from '@/components/shared/StatusBadge';
-import { Pagination } from '@/components/shared/Pagination';
-import { getPnL, getBalanceSheet, getClientLedger, getReconciliation } from '@/api/reports.api';
-import { fmt, fmtDate, fmtDateTime } from '@/lib/utils';
-import { format, subDays } from 'date-fns';
-import { useWorkbookStore } from '@/stores/workbook.store';
+import { Button } from '@/components/ui/button';
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Segmented } from '@/components/shared/form';
+import { useLedger } from '@/lib/data/hooks';
+import { profitAndLoss, trialBalance } from '@/lib/data/ledger';
+import { CATEGORY_LABEL } from '@/lib/data/labels';
+import { fmtUSD } from '@/lib/data/money';
+import { daysAgo } from '@/lib/data/seed';
+import { downloadCsv } from '@/lib/csv';
+import { useTranslation } from '@/lib/i18n/useTranslation';
+import { cn } from '@/lib/utils';
+import type { Category } from '@/lib/data/types';
 
-const today = format(new Date(), 'yyyy-MM-dd');
-const monthStart = format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd');
+type Tab = 'profit' | 'sheet' | 'trial';
+type Period = 'month' | 'last' | '30d' | 'year';
 
-const LIMIT = 20;
-
-function PnLTab() {
-  const { t } = useTranslation();
-  const [start, setStart] = useState(monthStart);
-  const [end, setEnd] = useState(today);
-  const { data, isLoading } = useQuery({ queryKey: ['pnl', start, end], queryFn: () => getPnL({ start_date: start, end_date: end }) });
-  if (isLoading) return <PageLoader />;
-
-  const handleExport = () => {
-    const wb = XLSX.utils.book_new();
-    const revRows = (data?.revenue ?? []).map((r) => ({ Account: r.account_name, Balance: r.balance }));
-    const expRows = (data?.expenses ?? []).map((e) => ({ Account: e.account_name, Balance: e.balance }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(revRows), 'Revenue');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(expRows), 'Expenses');
-    XLSX.writeFile(wb, `PnL_${start}_to_${end}.xlsx`);
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-end gap-4">
-        <div className="space-y-1"><Label>{t('filter.from')}</Label><Input type="date" value={start} onChange={(e) => setStart(e.target.value)} /></div>
-        <div className="space-y-1"><Label>{t('filter.to')}</Label><Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></div>
-        <Button variant="outline" size="sm" onClick={handleExport} className="mb-0.5">{t('btn.export.excel')}</Button>
-      </div>
-      <div className="grid grid-cols-3 gap-4">
-        {[
-          { label: t('reports.pl.revenue'), value: data?.totalRevenue, color: 'text-success dark:text-green-400' },
-          { label: t('reports.pl.expenses'), value: data?.totalExpenses, color: 'text-destructive dark:text-red-400' },
-          { label: t('reports.pl.netProfit'), value: data?.netPnL, color: Number(data?.netPnL) >= 0 ? 'text-success dark:text-green-400' : 'text-destructive dark:text-red-400' },
-        ].map(({ label, value, color }) => (
-          <div key={label} className="card-elevated rounded-2xl p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{label}</p>
-            <p className={`text-2xl font-bold tabular-nums ${color}`}>${fmt(value)}</p>
-          </div>
-        ))}
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <SectionCard title={t('reports.pl.revenue')} padded={false}>
-          <Table>
-            <TableHeader><TableRow><TableHead>{t('reports.tb.account')}</TableHead><TableHead>{t('col.balance')}</TableHead></TableRow></TableHeader>
-            <TableBody>{data?.revenue?.map((r) => (<TableRow key={r.account_id}><TableCell>{r.account_name}</TableCell><TableCell className="font-mono text-success dark:text-green-400">${fmt(r.balance)}</TableCell></TableRow>))}</TableBody>
-          </Table>
-        </SectionCard>
-        <SectionCard title={t('reports.pl.expenses')} padded={false}>
-          <Table>
-            <TableHeader><TableRow><TableHead>{t('reports.tb.account')}</TableHead><TableHead>{t('col.balance')}</TableHead></TableRow></TableHeader>
-            <TableBody>{data?.expenses?.map((e) => (<TableRow key={e.account_id}><TableCell>{e.account_name}</TableCell><TableCell className="font-mono text-destructive dark:text-red-400">${fmt(e.balance)}</TableCell></TableRow>))}</TableBody>
-          </Table>
-        </SectionCard>
-      </div>
-    </div>
-  );
+function periodRange(p: Period): [string, string] {
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  if (p === 'month') return [today.slice(0, 8) + '01', today];
+  if (p === '30d') return [daysAgo(30), today];
+  if (p === 'year') return [today.slice(0, 4) + '-01-01', today];
+  const first = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  const last = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0));
+  return [first.toISOString().slice(0, 10), last.toISOString().slice(0, 10)];
 }
 
-function BalanceSheetTab() {
-  const { t } = useTranslation();
-  const { data, isLoading } = useQuery({ queryKey: ['balance-sheet'], queryFn: () => getBalanceSheet({}) });
-  if (isLoading) return <PageLoader />;
-
-  const handleExport = () => {
-    const wb = XLSX.utils.book_new();
-    const assetRows = (data?.assets ?? []).map((r) => ({ Account: r.account_name, Balance: r.balance }));
-    const liabRows = (data?.liabilities ?? []).map((r) => ({ Account: r.account_name, Balance: r.balance }));
-    const eqRows = (data?.equity ?? []).map((r) => ({ Account: r.account_name, Balance: r.balance }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(assetRows), 'Assets');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(liabRows), 'Liabilities');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(eqRows), 'Equity');
-    XLSX.writeFile(wb, `BalanceSheet_${today}.xlsx`);
-  };
-
-  const sectionTitles = {
-    assets: t('reports.bs.assets'),
-    liabilities: t('reports.bs.liabilities'),
-    equity: t('reports.bs.equity'),
-  };
-
+function Line({ label, value, bold, tone }: { label: string; value: number; bold?: boolean; tone?: 'good' | 'bad' }) {
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button variant="outline" size="sm" onClick={handleExport}>{t('btn.export.excel')}</Button>
-      </div>
-      <div className="grid grid-cols-3 gap-4">
-        {[
-          { label: t('reports.bs.assets'),      value: data?.totalAssets,      color: 'text-primary' },
-          { label: t('reports.bs.liabilities'), value: data?.totalLiabilities, color: 'text-warning dark:text-amber-400' },
-          { label: t('reports.bs.equity'),      value: data?.totalEquity,      color: 'text-success dark:text-green-400' },
-        ].map(({ label, value, color }) => (
-          <div key={label} className="card-elevated rounded-2xl p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{label}</p>
-            <p className={`text-2xl font-bold tabular-nums ${color}`}>${fmt(value)}</p>
-          </div>
-        ))}
-      </div>
-      <div className="grid grid-cols-3 gap-4">
-        {(['assets', 'liabilities', 'equity'] as const).map((key) => (
-          <SectionCard key={key} title={sectionTitles[key]} padded={false}>
-            <Table>
-              <TableHeader><TableRow><TableHead>{t('reports.tb.account')}</TableHead><TableHead>{t('col.balance')}</TableHead></TableRow></TableHeader>
-              <TableBody>{data?.[key]?.map((r) => (<TableRow key={r.account_id}><TableCell className="text-sm">{r.account_name}</TableCell><TableCell className="font-mono text-sm">${fmt(r.balance)}</TableCell></TableRow>))}</TableBody>
-            </Table>
-          </SectionCard>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function LedgerTab() {
-  const [offset, setOffset] = useState(0);
-  const [start, setStart] = useState(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
-  const [end, setEnd] = useState(today);
-  const { data, isLoading } = useQuery({ queryKey: ['ledger', offset, start, end], queryFn: () => getClientLedger({ limit: LIMIT, offset, start_date: start, end_date: end }) });
-  if (isLoading) return <PageLoader />;
-  return (
-    <div className="space-y-4">
-      <div className="flex gap-4">
-        <div className="space-y-1"><Label>From</Label><Input type="date" value={start} onChange={(e) => setStart(e.target.value)} /></div>
-        <div className="space-y-1"><Label>To</Label><Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></div>
-      </div>
-      <SectionCard padded={false}>
-          <Table>
-            <TableHeader><TableRow><TableHead>Client</TableHead><TableHead>MT5</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Balance After</TableHead><TableHead>Date</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {data?.entries?.length ? data.entries.map((e) => (
-                <TableRow key={e.id}>
-                  <TableCell>{e.client_name ?? '-'}</TableCell>
-                  <TableCell className="font-mono">{e.mt5_login ?? '-'}</TableCell>
-                  <TableCell>{e.entry_type}</TableCell>
-                  <TableCell className={`font-mono ${['DEPOSIT','CREDIT'].includes(e.entry_type) ? 'text-success dark:text-green-400' : 'text-destructive dark:text-red-400'}`}>${fmt(e.amount)} {e.currency}</TableCell>
-                  <TableCell className="font-mono">${fmt(e.balance_after)}</TableCell>
-                  <TableCell>{fmtDateTime(e.created_at)}</TableCell>
-                </TableRow>
-              )) : <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No entries</TableCell></TableRow>}
-            </TableBody>
-          </Table>
-          <Pagination offset={offset} limit={LIMIT} hasMore={(data?.entries?.length ?? 0) === LIMIT} onChange={setOffset} />
-      </SectionCard>
-    </div>
-  );
-}
-
-function ReconciliationTab() {
-  const [start, setStart] = useState(monthStart);
-  const [end, setEnd] = useState(today);
-  const { data, isLoading } = useQuery({ queryKey: ['recon', start, end], queryFn: () => getReconciliation({ start_date: start, end_date: end }) });
-  if (isLoading) return <PageLoader />;
-  return (
-    <div className="space-y-4">
-      <div className="flex gap-4">
-        <div className="space-y-1"><Label>From</Label><Input type="date" value={start} onChange={(e) => setStart(e.target.value)} /></div>
-        <div className="space-y-1"><Label>To</Label><Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></div>
-      </div>
-      <SectionCard padded={false}>
-          <Table>
-            <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Status</TableHead><TableHead>Resolved By</TableHead><TableHead>Notes</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {data?.records?.length ? data.records.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell>{fmtDate(r.recon_date)}</TableCell>
-                  <TableCell><StatusBadge status={r.status} /></TableCell>
-                  <TableCell>{r.resolved_by_name ?? '-'}</TableCell>
-                  <TableCell className="max-w-xs truncate text-sm text-muted-foreground">{r.notes ?? '-'}</TableCell>
-                </TableRow>
-              )) : <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">No records</TableCell></TableRow>}
-            </TableBody>
-          </Table>
-      </SectionCard>
-    </div>
-  );
-}
-
-function TrialBalanceTab() {
-  const { t } = useTranslation();
-  const accounts = useWorkbookStore((s) => s.accounts);
-
-  const rows = accounts.map((a) => ({
-    code: a.code,
-    name: a.name,
-    category: a.category,
-    debit: a.balance > 0 ? a.balance : 0,
-    credit: a.balance < 0 ? Math.abs(a.balance) : 0,
-  }));
-
-  const totalDebit = rows.reduce((sum, r) => sum + r.debit, 0);
-  const totalCredit = rows.reduce((sum, r) => sum + r.credit, 0);
-  const balanced = Math.abs(totalDebit - totalCredit) < 0.01;
-
-  const handleExport = () => {
-    const wb = XLSX.utils.book_new();
-    type SheetRow = { 'Account Code': string; 'Account Name': string; 'Category': string; 'Debit': number; 'Credit': number };
-    const sheetRows: SheetRow[] = rows.map((r) => ({
-      'Account Code': r.code,
-      'Account Name': r.name,
-      'Category': r.category as string,
-      'Debit': r.debit,
-      'Credit': r.credit,
-    }));
-    sheetRows.push({
-      'Account Code': '',
-      'Account Name': 'TOTAL',
-      'Category': '',
-      'Debit': totalDebit,
-      'Credit': totalCredit,
-    });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheetRows), 'Trial Balance');
-    XLSX.writeFile(wb, `TrialBalance_${today}.xlsx`);
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">
-            {balanced ? (
-              <span className="flex items-center gap-1 text-success font-medium">
-                <span className="text-base">✓</span> Accounts are balanced
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 text-destructive font-medium">
-                <span className="text-base">✗</span> Accounts are NOT balanced (difference: ${Math.abs(totalDebit - totalCredit).toLocaleString()})
-              </span>
-            )}
-          </span>
-        </div>
-        <Button variant="outline" size="sm" onClick={handleExport}>{t('btn.export.excel')}</Button>
-      </div>
-
-      <SectionCard padded={false}>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-28">{t('col.code')}</TableHead>
-                <TableHead>{t('reports.tb.account')}</TableHead>
-                <TableHead className="w-28">{t('col.category')}</TableHead>
-                <TableHead className="w-32 text-right">{t('reports.tb.debit')}</TableHead>
-                <TableHead className="w-32 text-right">{t('reports.tb.credit')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((r) => (
-                <TableRow key={r.code}>
-                  <TableCell className="font-mono text-xs font-semibold text-muted-foreground">{r.code}</TableCell>
-                  <TableCell className="text-sm">{r.name}</TableCell>
-                  <TableCell>
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium capitalize">{r.category}</span>
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-sm tabular-nums text-success">
-                    {r.debit > 0 ? `$${r.debit.toLocaleString()}` : '—'}
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-sm tabular-nums text-destructive">
-                    {r.credit > 0 ? `$${r.credit.toLocaleString()}` : '—'}
-                  </TableCell>
-                </TableRow>
-              ))}
-
-              {/* Totals row */}
-              <TableRow className="border-t-2 border-border bg-muted/30 font-bold">
-                <TableCell colSpan={3} className="text-sm font-bold">
-                  <div className="flex items-center gap-2">
-                    {t('report.total')}
-                    {balanced
-                      ? <span className="text-success text-base">✓</span>
-                      : <span className="text-destructive text-base">✗</span>}
-                  </div>
-                </TableCell>
-                <TableCell className="text-right font-mono font-bold tabular-nums text-success">
-                  ${totalDebit.toLocaleString()}
-                </TableCell>
-                <TableCell className="text-right font-mono font-bold tabular-nums text-destructive">
-                  ${totalCredit.toLocaleString()}
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        </div>
-      </SectionCard>
+    <div className={cn('flex items-center justify-between gap-3 px-5 py-2.5 text-[14px]', bold && 'bg-muted/40 font-bold')}>
+      <span>{label}</span>
+      <span className={cn('font-mono', tone === 'good' && 'text-success', tone === 'bad' && 'text-destructive')} dir="ltr">{fmtUSD(value, 2)}</span>
     </div>
   );
 }
 
 export default function Reports() {
-  const { t } = useTranslation();
+  const { tr, nameOf } = useTranslation();
+  const { accounts, entries, cat, sheet, usd } = useLedger();
+  const [tab, setTab] = useState<Tab>('profit');
+  const [period, setPeriod] = useState<Period>('month');
+  const [from, to] = periodRange(period);
+  const pnl = useMemo(() => profitAndLoss(accounts, entries, from, to), [accounts, entries, from, to]);
+  const tb = useMemo(() => trialBalance(accounts, usd), [accounts, usd]);
+
+  const own: Category[] = ['funds', 'banks', 'suppliers', 'staff', 'fixed'];
+  const owe: Category[] = ['clients', 'ibs', 'debts'];
+
+  const exportIt = () => {
+    if (tab === 'profit') {
+      downloadCsv(`vaultex-profit-${from}-${to}.csv`, [
+        ...pnl.income.map((l) => ({ group: 'Earned', account: l.code, name: l.name, usd: l.amount })),
+        ...pnl.costs.map((l) => ({ group: 'Spent', account: l.code, name: l.name, usd: -l.amount })),
+        { group: 'Profit', account: '', name: '', usd: pnl.profit },
+      ]);
+    } else if (tab === 'sheet') {
+      downloadCsv('vaultex-own-and-owe.csv', [
+        ...own.map((c) => ({ side: 'Own', group: CATEGORY_LABEL[c].en, usd: cat[c] })),
+        ...owe.map((c) => ({ side: 'Owe', group: CATEGORY_LABEL[c].en, usd: cat[c] })),
+        { side: 'Owners', group: "Owners' money", usd: sheet.owners },
+        { side: 'Owners', group: 'Profit not shared yet', usd: sheet.profit },
+        { side: 'Owners', group: 'Currency effect', usd: sheet.currencyEffect },
+      ]);
+    } else {
+      downloadCsv('vaultex-trial-balance.csv', tb.rows.map((r) => ({ account: r.code, name: r.name, debit: r.debit, credit: r.credit })));
+    }
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHeader
-        title={t('reports.title')}
-        subtitle={t('reports.subtitle')}
+        title={tr('Profit and reports', 'الأرباح والتقارير')}
+        subtitle={tr('Did you make money? What do you own and owe? All in US dollars.', 'هل ربحت؟ ماذا تملك وماذا عليك؟ كله بالدولار الأمريكي.')}
         hint={
-          <PageHint id="reports" title={t('hint.reports.title')}>
-            {t('hint.reports.body')}
+          <PageHint id="reports-v2" title={tr('Three reports', 'ثلاثة تقارير')}>
+            {tr('"Did we make money?" is your profit report. "What we own and owe" is your balance sheet. "Trial balance" is the list your accountant or auditor will ask for.', '"هل ربحنا؟" هو تقرير الأرباح. "ما نملكه وما علينا" هو الميزانية. و"ميزان المراجعة" هو القائمة التي سيطلبها محاسبك أو مدققك.')}
           </PageHint>
         }
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" className="gap-1.5" onClick={() => window.print()}><Printer className="h-4 w-4" />{tr('Print', 'طباعة')}</Button>
+            <Button variant="outline" className="gap-1.5" onClick={exportIt}><Download className="h-4 w-4" />{tr('Download (Excel)', 'تنزيل (إكسل)')}</Button>
+          </div>
+        }
       />
-      <Tabs defaultValue="pnl">
-        <TabsList>
-          <TabsTrigger value="pnl">{t('reports.tab.pl')}</TabsTrigger>
-          <TabsTrigger value="bs">{t('reports.tab.bs')}</TabsTrigger>
-          <TabsTrigger value="ledger">Client Ledger</TabsTrigger>
-          <TabsTrigger value="recon">Reconciliation</TabsTrigger>
-          <TabsTrigger value="trial">{t('reports.tab.tb')}</TabsTrigger>
-        </TabsList>
-        <TabsContent value="pnl" className="mt-4"><PnLTab /></TabsContent>
-        <TabsContent value="bs" className="mt-4"><BalanceSheetTab /></TabsContent>
-        <TabsContent value="ledger" className="mt-4"><LedgerTab /></TabsContent>
-        <TabsContent value="recon" className="mt-4"><ReconciliationTab /></TabsContent>
-        <TabsContent value="trial" className="mt-4"><TrialBalanceTab /></TabsContent>
-      </Tabs>
+
+      <Segmented<Tab> value={tab} onChange={setTab} options={[
+        { value: 'profit', label: tr('Did we make money?', 'هل ربحنا؟') },
+        { value: 'sheet', label: tr('What we own and owe', 'ما نملكه وما علينا') },
+        { value: 'trial', label: tr('Trial balance', 'ميزان المراجعة') },
+      ]} />
+
+      {tab === 'profit' && (
+        <>
+          <div className="flex flex-wrap items-center gap-3">
+            <Segmented<Period> value={period} onChange={setPeriod} options={[
+              { value: 'month', label: tr('This month', 'هذا الشهر') },
+              { value: 'last', label: tr('Last month', 'الشهر الماضي') },
+              { value: '30d', label: tr('Last 30 days', 'آخر 30 يومًا') },
+              { value: 'year', label: tr('This year', 'هذه السنة') },
+            ]} />
+            <span className="text-[13px] text-muted-foreground">{from} → {to}</span>
+          </div>
+
+          <div className={cn('flex items-center gap-4 rounded-2xl border p-6', pnl.profit >= 0 ? 'border-success/30 bg-success/5' : 'border-destructive/30 bg-destructive/5')}>
+            {pnl.profit >= 0 ? <TrendingUp className="h-10 w-10 text-success" /> : <TrendingDown className="h-10 w-10 text-destructive" />}
+            <div>
+              <p className="text-[14px] font-medium">{pnl.profit >= 0 ? tr('Yes! You made a profit.', 'نعم! حققت ربحًا.') : tr('No. You spent more than you earned.', 'لا. صرفت أكثر مما كسبت.')}</p>
+              <p className={cn('font-mono text-3xl font-extrabold', pnl.profit >= 0 ? 'text-success' : 'text-destructive')} dir="ltr">{fmtUSD(pnl.profit, 2)}</p>
+              <p className="text-[13px] text-muted-foreground">{tr(`Earned ${fmtUSD(pnl.totalIncome)} − spent ${fmtUSD(pnl.totalCosts)}`, `كسبت ${fmtUSD(pnl.totalIncome)} − صرفت ${fmtUSD(pnl.totalCosts)}`)}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <SectionCard padded={false} title={tr('Money earned', 'المال المكتسب')} action={<span className="font-mono font-bold text-success">{fmtUSD(pnl.totalIncome, 2)}</span>}>
+              <div className="divide-y divide-border/40">
+                {pnl.income.map((l) => <Line key={l.code} label={nameOf(l)} value={l.amount} tone={l.amount < 0 ? 'bad' : undefined} />)}
+                {pnl.income.length === 0 && <p className="px-5 py-6 text-center text-[13px] text-muted-foreground">{tr('Nothing earned in this time.', 'لا دخل في هذه الفترة.')}</p>}
+              </div>
+            </SectionCard>
+            <SectionCard padded={false} title={tr('Money spent', 'المال المصروف')} action={<span className="font-mono font-bold text-destructive">{fmtUSD(pnl.totalCosts, 2)}</span>}>
+              <div className="divide-y divide-border/40">
+                {pnl.costs.map((l) => <Line key={l.code} label={nameOf(l)} value={l.amount} />)}
+                {pnl.costs.length === 0 && <p className="px-5 py-6 text-center text-[13px] text-muted-foreground">{tr('Nothing spent in this time.', 'لا مصاريف في هذه الفترة.')}</p>}
+              </div>
+            </SectionCard>
+          </div>
+          <p className="text-[12px] text-muted-foreground">
+            {tr('"Client trading results" is what you win or lose when you keep client trades in-house. When clients lose, you earn.', '"نتائج تداول الزبائن" هي ما تربحه أو تخسره عندما تُبقي صفقات الزبائن داخليًا. عندما يخسر الزبائن، تربح أنت.')}
+          </p>
+        </>
+      )}
+
+      {tab === 'sheet' && (
+        <>
+          <div className="rounded-2xl bg-primary/5 p-5 text-center text-[15px]">
+            <span className="font-semibold">{tr('What you own', 'ما تملكه')} {fmtUSD(sheet.own)}</span>
+            <span className="mx-2">=</span>
+            <span className="font-semibold">{tr('What you owe', 'ما عليك')} {fmtUSD(sheet.owe)}</span>
+            <span className="mx-2">+</span>
+            <span className="font-semibold">{tr("Owners' share", 'حصة المالكين')} {fmtUSD(sheet.owners + sheet.profit + sheet.currencyEffect)}</span>
+            <p className={cn('mt-2 inline-flex items-center gap-1.5 text-[13px] font-semibold', sheet.balanced ? 'text-success' : 'text-destructive')}>
+              <Scale className="h-4 w-4" />{sheet.balanced ? tr('Both sides are equal ✓', 'الجانبان متساويان ✓') : tr('The sides are not equal', 'الجانبان غير متساويين')}
+            </p>
+          </div>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <SectionCard padded={false} title={tr('What you own', 'ما تملكه')} action={<span className="font-mono font-bold">{fmtUSD(sheet.own, 2)}</span>}>
+              <div className="divide-y divide-border/40">{own.map((c) => <Line key={c} label={tr(CATEGORY_LABEL[c].en, CATEGORY_LABEL[c].ar)} value={cat[c]} />)}</div>
+            </SectionCard>
+            <SectionCard padded={false} title={tr('What you owe, and the owners’ share', 'ما عليك، وحصة المالكين')} action={<span className="font-mono font-bold">{fmtUSD(sheet.owe + sheet.owners + sheet.profit + sheet.currencyEffect, 2)}</span>}>
+              <div className="divide-y divide-border/40">
+                {owe.map((c) => <Line key={c} label={tr(CATEGORY_LABEL[c].en, CATEGORY_LABEL[c].ar)} value={cat[c]} />)}
+                <Line label={tr('Total you owe', 'مجموع ما عليك')} value={sheet.owe} bold />
+                <Line label={tr("Owners' money and past profit", 'أموال المالكين والأرباح السابقة')} value={sheet.owners} />
+                <Line label={tr('Profit not shared yet', 'أرباح لم تُوزّع بعد')} value={sheet.profit} tone={sheet.profit >= 0 ? 'good' : 'bad'} />
+                <Line label={tr('Currency effect (rates moved)', 'أثر تغيّر أسعار العملات')} value={sheet.currencyEffect} />
+              </div>
+            </SectionCard>
+          </div>
+        </>
+      )}
+
+      {tab === 'trial' && (
+        <SectionCard padded={false} title={tr('Trial balance (in USD at today’s rates)', 'ميزان المراجعة (بالدولار حسب سعر اليوم)')} description={tr('Every account with a balance. The two totals must be equal.', 'كل حساب له رصيد. ويجب أن يتساوى المجموعان.')}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-20">{tr('No.', 'رقم')}</TableHead>
+                <TableHead>{tr('Account', 'الحساب')}</TableHead>
+                <TableHead className="text-end">{tr('Debit', 'مدين')}</TableHead>
+                <TableHead className="text-end">{tr('Credit', 'دائن')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {tb.rows.map((r) => (
+                <TableRow key={r.code}>
+                  <TableCell className="font-mono text-xs text-muted-foreground">{r.code}</TableCell>
+                  <TableCell>{nameOf(r)}</TableCell>
+                  <TableCell className="text-end font-mono" dir="ltr">{r.debit ? fmtUSD(r.debit, 2) : ''}</TableCell>
+                  <TableCell className="text-end font-mono" dir="ltr">{r.credit ? fmtUSD(r.credit, 2) : ''}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell />
+                <TableCell className="font-bold">
+                  {tr('Totals', 'المجاميع')}
+                  <span className={cn('ms-2 text-[12px]', Math.abs(tb.difference) < 0.05 ? 'text-success' : 'text-destructive')}>
+                    {Math.abs(tb.difference) < 0.05 ? tr('equal ✓', 'متساويان ✓') : tr(`off by ${fmtUSD(tb.difference, 2)}`, `فرق ${fmtUSD(tb.difference, 2)}`)}
+                  </span>
+                </TableCell>
+                <TableCell className="text-end font-mono font-bold" dir="ltr">{fmtUSD(tb.totalDebit, 2)}</TableCell>
+                <TableCell className="text-end font-mono font-bold" dir="ltr">{fmtUSD(tb.totalCredit, 2)}</TableCell>
+              </TableRow>
+            </TableFooter>
+          </Table>
+        </SectionCard>
+      )}
     </div>
   );
 }

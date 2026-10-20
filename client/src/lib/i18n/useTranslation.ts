@@ -24,7 +24,17 @@ export function useTranslation() {
     [lang],
   );
 
-  return { t, lang, dir, setLang, toggleLang };
+  /** Inline text in both languages: tr('Add money', 'أضف مالًا'). */
+  const tr = useCallback((en: string, ar: string) => (lang === 'ar' ? ar : en), [lang]);
+
+  /** Show the Arabic name in Arabic when there is one. */
+  const nameOf = useCallback(
+    (item: { name: string; arabic?: string } | undefined | null) =>
+      !item ? '' : lang === 'ar' && item.arabic ? item.arabic : item.name,
+    [lang],
+  );
+
+  return { t, tr, nameOf, lang, dir, setLang, toggleLang };
 }
 
 /**

@@ -1,71 +1,42 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useWorkbookStore } from '@/stores/workbook.store';
+import { useState, useCallback, useEffect } from 'react';
+import { useBooks } from '@/stores/books.store';
 
-interface LiveRatesResult {
-  isLive: boolean;
-  isLoading: boolean;
-  error: string | null;
-  lastUpdated: Date | null;
-  secondsAgo: number;
-  refresh: () => void;
-}
+// Daily reference rates from the European Central Bank (via frankfurter.app).
+// AED and SAR are tied to the dollar, so they stay fixed.
+const API_URL = 'https://api.frankfurter.app/latest?from=USD&to=EUR,TRY,GBP';
+const STALE_MS = 12 * 3_600_000;
 
-const API_URL = 'https://api.frankfurter.app/latest?from=USD&to=EUR,TRY';
-const INTERVAL_MS = 60_000;
+export function useDailyRates({ auto = false }: { auto?: boolean } = {}) {
+  const setRates = useBooks((s) => s.setRates);
+  const updatedAt = useBooks((s) => s.ratesUpdatedAt);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
 
-export function useLiveRates(): LiveRatesResult {
-  const setLiveRate = useWorkbookStore((s) => s.setLiveRate);
-  const [isLive, setIsLive] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [secondsAgo, setSecondsAgo] = useState(0);
-  const abortRef = useRef<AbortController | null>(null);
-
-  const fetchRates = useCallback(async () => {
-    if (abortRef.current) abortRef.current.abort();
-    abortRef.current = new AbortController();
-    setIsLoading(true);
-    setError(null);
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(false);
     try {
-      const res = await fetch(API_URL, { signal: abortRef.current.signal });
+      const res = await fetch(API_URL);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      // data.rates = { EUR: 0.93, TRY: 45.5 }
-      Object.entries(data.rates as Record<string, number>).forEach(([currency, rate]) => {
-        setLiveRate(`USD/${currency}`, rate);
-      });
-      setIsLive(true);
-      setLastUpdated(new Date());
-      setSecondsAgo(0);
-    } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        setError('Rate fetch failed');
-        setIsLive(false);
-      }
+      const data = (await res.json()) as { rates: Record<string, number> };
+      // The feed says "1 USD = 0.92 EUR". Vaultex keeps "1 EUR = 1.087 USD".
+      const patch: Record<string, number> = {};
+      for (const [cur, perUsd] of Object.entries(data.rates)) if (perUsd > 0) patch[cur] = 1 / perUsd;
+      setRates(patch);
+      return true;
+    } catch {
+      setError(true);
+      return false;
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  }, [setLiveRate]);
+  }, [setRates]);
 
-  // Initial fetch
   useEffect(() => {
-    fetchRates();
-    const interval = setInterval(fetchRates, INTERVAL_MS);
-    return () => {
-      clearInterval(interval);
-      abortRef.current?.abort();
-    };
-  }, [fetchRates]);
+    if (!auto) return;
+    const stale = !updatedAt || Date.now() - new Date(updatedAt).getTime() > STALE_MS;
+    if (stale) void refresh();
+  }, [auto, updatedAt, refresh]);
 
-  // Seconds-ago ticker
-  useEffect(() => {
-    if (!lastUpdated) return;
-    const ticker = setInterval(() => {
-      setSecondsAgo(Math.floor((Date.now() - lastUpdated.getTime()) / 1000));
-    }, 1000);
-    return () => clearInterval(ticker);
-  }, [lastUpdated]);
-
-  return { isLive, isLoading, error, lastUpdated, secondsAgo, refresh: fetchRates };
+  return { loading, error, updatedAt, refresh };
 }

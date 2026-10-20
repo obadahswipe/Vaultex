@@ -26,3 +26,9 @@ export function downloadCSV(filename: string, headers: string[], rows: Array<Arr
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+/** Download a list of objects; the keys of the first object become the columns. */
+export function downloadCsv(filename: string, rows: Array<Record<string, unknown>>): void {
+  const headers = rows.length ? Object.keys(rows[0]) : [];
+  downloadCSV(filename, headers, rows.map((r) => headers.map((h) => r[h])));
+}

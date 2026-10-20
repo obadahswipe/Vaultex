@@ -3,41 +3,23 @@ import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App.tsx';
 
-async function enableMocking() {
-  if (import.meta.env.PROD) return;
-  const { worker } = await import('./mocks/browser');
-  return worker.start({
-    serviceWorker: { url: '/mockServiceWorker.js' },
-    onUnhandledRequest: 'bypass',
-  });
+// Older versions used a fake-server worker in development. Remove it if it is still installed.
+if ('serviceWorker' in navigator && !import.meta.env.PROD) {
+  navigator.serviceWorker.getRegistrations().then((regs) => {
+    regs.filter((r) => r.active?.scriptURL.endsWith('/mockServiceWorker.js')).forEach((r) => r.unregister());
+  }).catch(() => {});
 }
 
 function registerPWA() {
   if (!import.meta.env.PROD) return;
   import('virtual:pwa-register').then(({ registerSW }) => {
-    registerSW({
-      immediate: false,
-      onNeedRefresh() {},
-      onOfflineReady() {},
-    });
+    registerSW({ immediate: false, onNeedRefresh() {}, onOfflineReady() {} });
   }).catch(() => {});
 }
 
-enableMocking()
-  .then(() => {
-    createRoot(document.getElementById('root')!).render(
-      <StrictMode>
-        <App />
-      </StrictMode>,
-    );
-    registerPWA();
-  })
-  .catch((err) => {
-    console.warn('[MSW] Failed to start, rendering without mocks:', err);
-    createRoot(document.getElementById('root')!).render(
-      <StrictMode>
-        <App />
-      </StrictMode>,
-    );
-    registerPWA();
-  });
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);
+registerPWA();

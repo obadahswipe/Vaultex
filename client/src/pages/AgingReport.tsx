@@ -1,246 +1,118 @@
-import { useMemo, useState } from 'react';
-import { Clock, AlertTriangle, TrendingDown, Users } from 'lucide-react';
+import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Clock, AlertTriangle, Users, BadgeDollarSign } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { PageHint } from '@/components/shared/PageHint';
 import { SectionCard } from '@/components/shared/SectionCard';
 import { StatCard } from '@/components/shared/StatCard';
-import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useLedger } from '@/lib/data/hooks';
+import { lineEffect } from '@/lib/data/ledger';
+import { fmtMoney, fmtUSD, round2, toUSD } from '@/lib/data/money';
+import { CATEGORY_LABEL } from '@/lib/data/labels';
 import { useTranslation } from '@/lib/i18n/useTranslation';
-import { clients } from '@/lib/workbook';
 import { cn } from '@/lib/utils';
-import { useToast } from '@/hooks/use-toast';
+import type { Account } from '@/lib/data/types';
 
-type Bucket = '0-30' | '30-60' | '60-90' | '90+';
-
-interface AgingRow {
-  code: string;
-  name: string;
-  arabic?: string;
-  balance: number;
-  lastActivityDaysAgo: number;
-  bucket: Bucket;
-}
-
-function getBucket(days: number): Bucket {
-  if (days <= 30) return '0-30';
-  if (days <= 60) return '30-60';
-  if (days <= 90) return '60-90';
-  return '90+';
-}
-
-const BUCKET_COLOR: Record<Bucket, string> = {
-  '0-30': 'bg-success/10 text-success',
-  '30-60': 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
-  '60-90': 'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300',
-  '90+': 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300',
-};
-
-const BUCKET_BAR_COLOR: Record<Bucket, string> = {
-  '0-30': 'bg-emerald-500',
-  '30-60': 'bg-amber-500',
-  '60-90': 'bg-orange-500',
-  '90+': 'bg-red-500',
-};
-
-// Simulate last activity from seeded data (days since last transaction)
-const MOCK_LAST_ACTIVITY: Record<string, number> = {
-  '12166': 14, '12185': 22, '121102': 38, '12177': 8,  '12120': 55,
-  '12188': 91, '12154': 67, '121101': 5,  '121111': 45, '12140': 17,
-  '12190': 33, '12196': 80, '12143': 120, '121108': 28, '121110': 95,
-  '12412': 73, '12153': 44, '12157': 61,  '12186': 12,  '12199': 19,
-};
+type Bucket = '0-30' | '31-60' | '61-90' | '90+';
+const BUCKETS: Bucket[] = ['0-30', '31-60', '61-90', '90+'];
 
 export default function AgingReport() {
-  const { t, lang } = useTranslation();
-  const { toast } = useToast();
-  const [disputedIds, setDisputedIds] = useState<Set<string>>(new Set());
+  const { tr, nameOf } = useTranslation();
+  const navigate = useNavigate();
+  const { accounts, entries, balances, rates } = useLedger();
 
-  const handleRemind = (name: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    toast({ title: `Reminder scheduled for ${name}` });
-  };
+  const rows = useMemo(() => {
+    const today = Date.now();
+    const out: { acc: Account; owed: number; usd: number; since?: string; days: number; bucket: Bucket }[] = [];
+    for (const acc of accounts) {
+      const bal = balances[acc.code] ?? 0;
+      // Clients owe us when their balance is below zero. Staff owe us their loans.
+      const owed = acc.category === 'clients' ? -bal : acc.category === 'staff' ? bal : 0;
+      if (owed <= 0.005) continue;
+      // Walk forward to find when the debt started (the last time the balance crossed zero).
+      let running = acc.opening;
+      let since: string | undefined = (acc.category === 'clients' ? -running : running) > 0 ? undefined : '';
+      for (const e of entries) {
+        const lines = e.lines.filter((l) => l.accountCode === acc.code);
+        if (!lines.length) continue;
+        const before = acc.category === 'clients' ? -running : running;
+        running += lines.reduce((s, l) => s + lineEffect(acc, l), 0);
+        const after = acc.category === 'clients' ? -running : running;
+        if (before <= 0 && after > 0) since = e.date;
+      }
+      const days = since ? Math.max(0, Math.floor((today - new Date(since).getTime()) / 86_400_000)) : 120;
+      const bucket: Bucket = days <= 30 ? '0-30' : days <= 60 ? '31-60' : days <= 90 ? '61-90' : '90+';
+      out.push({ acc, owed: round2(owed), usd: round2(toUSD(owed, acc.currency, rates)), since: since || undefined, days, bucket });
+    }
+    return out.sort((a, b) => b.days - a.days);
+  }, [accounts, entries, balances, rates]);
 
-  const handleEscalate = (name: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    toast({ title: `Escalated to management: ${name}` });
-  };
-
-  const handleDispute = (code: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setDisputedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(code)) next.delete(code);
-      else next.add(code);
-      return next;
-    });
-  };
-
-  const rows: AgingRow[] = useMemo(() =>
-    clients
-      .filter((c) => c.balance !== 0)
-      .map((c) => {
-        const days = MOCK_LAST_ACTIVITY[c.code] ?? 30;
-        return {
-          code: c.code,
-          name: c.name,
-          arabic: c.arabic,
-          balance: c.balance,
-          lastActivityDaysAgo: days,
-          bucket: getBucket(days),
-        };
-      })
-      .sort((a, b) => b.lastActivityDaysAgo - a.lastActivityDaysAgo),
-  []);
-
-  const bucketTotals = useMemo(() => {
-    const totals: Record<Bucket, { count: number; balance: number }> = {
-      '0-30': { count: 0, balance: 0 },
-      '30-60': { count: 0, balance: 0 },
-      '60-90': { count: 0, balance: 0 },
-      '90+': { count: 0, balance: 0 },
-    };
-    rows.forEach((r) => {
-      totals[r.bucket].count++;
-      totals[r.bucket].balance += Math.abs(r.balance);
-    });
-    return totals;
-  }, [rows]);
-
-  const totalOutstanding = rows.reduce((s, r) => s + Math.abs(r.balance), 0);
-  const overdueRows = rows.filter((r) => r.bucket === '60-90' || r.bucket === '90+');
-  const criticalRows = rows.filter((r) => r.bucket === '90+');
+  const byBucket = BUCKETS.map((b) => ({ b, total: round2(rows.filter((r) => r.bucket === b).reduce((s, r) => s + r.usd, 0)), count: rows.filter((r) => r.bucket === b).length }));
+  const total = round2(rows.reduce((s, r) => s + r.usd, 0));
+  const tone: Record<Bucket, string> = { '0-30': 'bg-success', '31-60': 'bg-warning', '61-90': 'bg-orange-500', '90+': 'bg-destructive' };
 
   return (
     <div className="space-y-8">
       <PageHeader
-        title={t('aging.title')}
-        subtitle={t('aging.subtitle2')}
+        title={tr('Who owes us', 'من يدين لنا')}
+        subtitle={tr('Clients and staff who owe the company money, and for how long.', 'الزبائن والموظفون الذين يدينون للشركة بالمال، ومنذ متى.')}
         hint={
-          <PageHint id="aging" title={t('hint.aging.title')}>
-            {t('hint.aging.body')}
+          <PageHint id="aging-v2" title={tr('Why does "how long" matter?', 'لماذا "منذ متى" مهم؟')}>
+            {tr('The longer someone owes you, the harder it is to get the money back. Call the people in red first.', 'كلما طالت مدة الدين، صعب استرداد المال. اتصل بأصحاب اللون الأحمر أولًا.')}
           </PageHint>
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-4">
-        <StatCard label={t('aging.subtitle2')} value={`$${totalOutstanding.toLocaleString()}`} icon={TrendingDown} accent="blue" />
-        <StatCard label={t('aging.current')} value={bucketTotals['0-30'].count} icon={Users} accent="green" />
-        <StatCard label={t('aging.60to90')} value={overdueRows.length} icon={AlertTriangle} accent="amber" />
-        <StatCard label={t('aging.over90')} value={criticalRows.length} icon={Clock} accent="pink" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label={tr('Owed to you', 'مستحق لك')} value={fmtUSD(total)} icon={BadgeDollarSign} accent="blue" deltaLabel={tr(`${rows.length} people`, `${rows.length} أشخاص`)} />
+        <StatCard label={tr('Clients', 'زبائن')} value={rows.filter((r) => r.acc.category === 'clients').length} icon={Users} accent="violet" deltaLabel={tr('Balance below zero', 'رصيد تحت الصفر')} />
+        <StatCard label={tr('Staff loans', 'سلف الموظفين')} value={rows.filter((r) => r.acc.category === 'staff').length} icon={Clock} accent="amber" deltaLabel={tr('Will be paid back', 'ستُسدد')} />
+        <StatCard label={tr('Over 90 days', 'أكثر من 90 يومًا')} value={fmtUSD(byBucket[3].total)} icon={AlertTriangle} accent="pink" deltaLabel={tr('Hardest to get back', 'الأصعب استردادًا')} />
       </div>
 
-      {/* Bucket summary */}
-      <div className="grid gap-4 sm:grid-cols-4">
-        {(['0-30', '30-60', '60-90', '90+'] as Bucket[]).map((b) => {
-          const pct = totalOutstanding > 0 ? (bucketTotals[b].balance / totalOutstanding) * 100 : 0;
-          return (
-            <SectionCard key={b} bodyClassName="p-4">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {b === '0-30' ? t('aging.current') : b === '30-60' ? t('aging.30to60') : b === '60-90' ? t('aging.60to90') : t('aging.over90')}
-              </p>
-              <p className="mt-1 font-mono text-xl font-bold tabular-nums">${bucketTotals[b].balance.toLocaleString()}</p>
-              <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
-                <div className={cn('h-full rounded-full', BUCKET_BAR_COLOR[b])} style={{ width: `${pct}%` }} />
-              </div>
-              <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
-                <span>{bucketTotals[b].count} accounts</span>
-                <span>{pct.toFixed(1)}%</span>
-              </div>
-            </SectionCard>
-          );
-        })}
-      </div>
-
-      <SectionCard title={t('aging.subtitle2')} padded={false}>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-24">{t('col.code')}</TableHead>
-                <TableHead>{t('field.name')}</TableHead>
-                <TableHead className="text-right">{t('col.balance')}</TableHead>
-                <TableHead className="w-32 text-center">{t('aging.col.days')}</TableHead>
-                <TableHead className="w-28">{t('aging.col.bucket')}</TableHead>
-                <TableHead className="w-48">{t('col.actions')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((r) => {
-                const isDisputed = disputedIds.has(r.code);
-                return (
-                  <TableRow
-                    key={r.code}
-                    className={cn(
-                      r.bucket === '90+' ? 'bg-destructive/5' : undefined,
-                      isDisputed && 'opacity-50',
-                    )}
-                  >
-                    <TableCell className="font-mono text-xs font-semibold text-muted-foreground">{r.code}</TableCell>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium text-sm">{lang === 'ar' && r.arabic ? r.arabic : r.name}</p>
-                        {r.arabic && lang !== 'ar' && <p className="text-xs text-muted-foreground">{r.arabic}</p>}
-                        {isDisputed && <span className="text-[10px] font-semibold text-muted-foreground italic">Disputed</span>}
-                      </div>
-                    </TableCell>
-                    <TableCell className={cn('text-right font-mono font-semibold tabular-nums', r.balance < 0 ? 'text-destructive' : 'text-foreground')}>
-                      {r.balance < 0 ? '-' : ''}${Math.abs(r.balance).toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <span className="flex items-center justify-center gap-1 text-sm">
-                        {r.bucket === '90+' && <AlertTriangle className="h-3.5 w-3.5 text-destructive" />}
-                        {r.lastActivityDaysAgo}d
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className={cn('inline-block rounded-full px-2.5 py-0.5 text-[10px] font-semibold', BUCKET_COLOR[r.bucket])}>
-                        {r.bucket}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        {(r.bucket === '30-60' || r.bucket === '60-90') && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-6 px-2 text-[10px] text-amber-600 border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30"
-                            onClick={(e) => handleRemind(r.name, e)}
-                          >
-                            {t('btn.remindClient')}
-                          </Button>
-                        )}
-                        {r.bucket === '90+' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-6 px-2 text-[10px] text-destructive border-destructive/30 hover:bg-destructive/10"
-                            onClick={(e) => handleEscalate(r.name, e)}
-                          >
-                            {t('btn.escalate')}
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className={cn(
-                            'h-6 px-2 text-[10px]',
-                            isDisputed
-                              ? 'text-muted-foreground border-muted-foreground/30 hover:bg-muted/30'
-                              : 'text-slate-600 border-slate-300 hover:bg-slate-50 dark:hover:bg-slate-900',
-                          )}
-                          onClick={(e) => handleDispute(r.code, e)}
-                        >
-                          {isDisputed ? t('btn.undispute') : t('btn.dispute')}
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+      <SectionCard title={tr('How old is the money owed?', 'كم عمر الديون؟')}>
+        <div className="flex h-4 w-full overflow-hidden rounded-full bg-muted">
+          {byBucket.map(({ b, total: t }) => total > 0 && t > 0 && <div key={b} className={tone[b]} style={{ width: `${(t / total) * 100}%` }} />)}
         </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-4">
+          {byBucket.map(({ b, total: t, count }) => (
+            <div key={b} className="rounded-xl border border-border/60 p-3">
+              <p className="flex items-center gap-1.5 text-[12px] text-muted-foreground"><span className={cn('h-2 w-2 rounded-full', tone[b])} />{tr(`${b} days`, `${b} يومًا`)}</p>
+              <p className="font-mono text-lg font-bold">{fmtUSD(t)}</p>
+              <p className="text-[11px] text-muted-foreground">{tr(`${count} people`, `${count} أشخاص`)}</p>
+            </div>
+          ))}
+        </div>
+      </SectionCard>
+
+      <SectionCard padded={false}>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{tr('Who', 'من')}</TableHead>
+              <TableHead className="hidden sm:table-cell">{tr('Kind', 'النوع')}</TableHead>
+              <TableHead className="text-end">{tr('Owes', 'يدين')}</TableHead>
+              <TableHead className="text-end">{tr('For', 'منذ')}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((r) => (
+              <TableRow key={r.acc.code} className="cursor-pointer" onClick={() => navigate(`/entries?account=${r.acc.code}`)}>
+                <TableCell className="font-medium">{nameOf(r.acc)}</TableCell>
+                <TableCell className="hidden text-[13px] text-muted-foreground sm:table-cell">{tr(CATEGORY_LABEL[r.acc.category].en, CATEGORY_LABEL[r.acc.category].ar)}</TableCell>
+                <TableCell className="text-end font-mono font-semibold" dir="ltr">{fmtMoney(r.owed, r.acc.currency)}</TableCell>
+                <TableCell className="text-end">
+                  <span className={cn('inline-flex items-center gap-1.5 text-[13px]')}>
+                    <span className={cn('h-2 w-2 rounded-full', tone[r.bucket])} />
+                    {r.since ? tr(`${r.days} days`, `${r.days} يومًا`) : tr('Before our records', 'قبل سجلاتنا')}
+                  </span>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        {rows.length === 0 && <p className="px-6 py-12 text-center text-[13px] text-muted-foreground">{tr('Nobody owes you money. 🎉', 'لا أحد يدين لك بالمال. 🎉')}</p>}
       </SectionCard>
     </div>
   );

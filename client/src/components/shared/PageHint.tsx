@@ -12,7 +12,7 @@ interface PageHintProps {
 }
 
 export function PageHint({ id, icon = '💡', title, children, className }: PageHintProps) {
-  const { t } = useTranslation();
+  const { tr } = useTranslation();
   const storageKey = `vaultex-hint-dismissed-${id}`;
   const [dismissed, setDismissed] = useState(() => {
     try { return localStorage.getItem(storageKey) === '1'; } catch { return false; }
@@ -36,7 +36,8 @@ export function PageHint({ id, icon = '💡', title, children, className }: Page
           try { localStorage.setItem(storageKey, '1'); } catch {}
         }}
         className="shrink-0 mt-0.5 rounded-lg p-1 text-muted-foreground hover:bg-primary/10 hover:text-foreground transition-colors"
-        title={t('hint.dismiss')}
+        title={tr('Hide this tip', 'إخفاء هذه النصيحة')}
+        aria-label={tr('Hide this tip', 'إخفاء هذه النصيحة')}
       >
         <X className="h-3.5 w-3.5" />
       </button>

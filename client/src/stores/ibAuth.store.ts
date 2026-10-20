@@ -1,21 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+/** The partner (IB) signed in to the partner portal. Their data lives in the books store. */
 export interface IBUser {
-  id: string;
+  ibId: string;
+  name: string;
   email: string;
-  full_name: string;
-  ib_code: string;
-  level: number;
-  level_label: string;
-  status: string;
-  commission_plan: string;
-  commission_rate: string;
-  joined_at: string;
-  payment_method: string;
-  bank_details: string;
-  referral_link: string;
-  referral_clicks: number;
 }
 
 interface IBAuthState {
@@ -33,9 +23,6 @@ export const useIBAuthStore = create<IBAuthState>()(
       setAuth: (token, ibUser) => set({ token, ibUser }),
       logout: () => set({ token: null, ibUser: null }),
     }),
-    {
-      name: 'ib-auth-storage',
-      partialize: (s) => ({ token: s.token, ibUser: s.ibUser }),
-    }
-  )
+    { name: 'vaultex-ib-auth', version: 2, migrate: () => ({ token: null, ibUser: null }) as never },
+  ),
 );

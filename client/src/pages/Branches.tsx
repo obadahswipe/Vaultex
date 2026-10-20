@@ -1,212 +1,102 @@
 import { useState } from 'react';
-import { Building2, Users, Globe, MapPin, Plus, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, MapPin, Users, Wallet, Phone, Pencil } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { PageHint } from '@/components/shared/PageHint';
-import { SectionCard } from '@/components/shared/SectionCard';
-import { StatCard } from '@/components/shared/StatCard';
 import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { mockBranches, mockDepartments } from '@/mocks/data/branches.mock';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Field, Toggle, attempt } from '@/components/shared/form';
+import { AccountPicker } from '@/components/shared/AccountPicker';
+import { useBooks } from '@/stores/books.store';
+import { useLedger } from '@/lib/data/hooks';
+import { fmtMoney, fmtUSD } from '@/lib/data/money';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 import { cn } from '@/lib/utils';
+import type { Branch } from '@/lib/data/types';
 
 export default function Branches() {
-  const [expanded, setExpanded] = useState<string | null>('b1');
+  const { tr, nameOf } = useTranslation();
+  const branches = useBooks((s) => s.branches);
+  const employees = useBooks((s) => s.employees);
+  const addBranch = useBooks((s) => s.addBranch);
+  const updateBranch = useBooks((s) => s.updateBranch);
+  const { accounts, balances, usd, byCode } = useLedger();
+  const [dialog, setDialog] = useState<{ open: boolean; branch?: Branch }>({ open: false });
+  const [f, setF] = useState({ name: '', arabic: '', city: '', manager: '', phone: '', cash: '' });
 
-  const deptsByBranch = (branchId: string) =>
-    mockDepartments.filter((d) => d.branch_id === branchId);
-
-  const totalBranches = mockBranches.length;
-  const totalDepts = mockDepartments.length;
-  const countries = new Set(mockBranches.map((b) => b.country)).size;
+  const open = (branch?: Branch) => {
+    setF(branch
+      ? { name: branch.name, arabic: branch.arabic, city: branch.city, manager: branch.manager, phone: branch.phone ?? '', cash: branch.cashAccountCode ?? '' }
+      : { name: '', arabic: '', city: '', manager: '', phone: '', cash: '' });
+    setDialog({ open: true, branch });
+  };
+  const save = () => {
+    const data = { name: f.name.trim(), arabic: f.arabic.trim() || f.name.trim(), city: f.city, manager: f.manager, phone: f.phone || undefined, cashAccountCode: f.cash || undefined };
+    const ok = dialog.branch
+      ? attempt(() => updateBranch(dialog.branch!.id, data), tr('Saved', 'تم الحفظ'))
+      : attempt(() => addBranch({ ...data, active: true }), tr('Branch added', 'تمت إضافة الفرع'));
+    if (ok) setDialog({ open: false });
+  };
 
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Branches & Departments"
-        subtitle="Manage your organisation's geographic and functional structure"
-        hint={
-          <PageHint id="branches" icon="🏢" title="What is this page?">
-            This page shows all physical offices and the departments that operate within them.
-            Expand a branch to see its departments, or switch to the Departments tab for a flat
-            view across the whole organisation.
-          </PageHint>
-        }
-        actions={
-          <Button size="sm" className="gap-1.5">
-            <Plus className="h-3.5 w-3.5" /> Add Branch
-          </Button>
-        }
+        title={tr('Branches', 'الفروع')}
+        subtitle={tr('Your offices, who runs them, and the cash each one holds.', 'مكاتبك، ومن يديرها، والنقد في كل منها.')}
+        hint={<PageHint id="branches-v2" title={tr('Tip', 'نصيحة')}>{tr('Link each branch to its cash box. Then you can see how much cash every office has.', 'اربط كل فرع بصندوقه النقدي. عندها ترى كم لدى كل مكتب من النقد.')}</PageHint>}
+        actions={<Button variant="gradient" className="gap-1.5" onClick={() => open()}><Plus className="h-4 w-4" />{tr('Add a branch', 'أضف فرعًا')}</Button>}
       />
 
-      {/* Gradient hero */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-700 p-6 text-white shadow-lg">
-        <div className="relative z-10">
-          <p className="text-sm font-medium text-white/70">Organisation Overview</p>
-          <h2 className="mt-1 text-2xl font-bold tracking-tight">Global Presence</h2>
-          <p className="mt-1 text-sm text-white/60">All offices and teams in one view</p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-sm">
-              <Building2 className="h-3.5 w-3.5" /> {totalBranches} Offices
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-sm">
-              <Users className="h-3.5 w-3.5" /> {totalDepts} Departments
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-sm">
-              <Globe className="h-3.5 w-3.5" /> {countries} Countries
-            </span>
-          </div>
-        </div>
-        <div aria-hidden className="pointer-events-none absolute -top-10 -right-10 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
-        <div aria-hidden className="pointer-events-none absolute bottom-0 left-1/2 h-32 w-32 rounded-full bg-violet-400/20 blur-2xl" />
-      </div>
-
-      {/* Stat cards */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard label="Total Branches" value={totalBranches} icon={Building2} accent="blue" />
-        <StatCard label="Active Departments" value={totalDepts} icon={Users} accent="green" />
-        <StatCard label="Countries" value={countries} icon={Globe} accent="violet" />
-      </div>
-
-      {/* Tabs */}
-      <Tabs defaultValue="branches">
-        <TabsList>
-          <TabsTrigger value="branches">Branches</TabsTrigger>
-          <TabsTrigger value="departments">Departments</TabsTrigger>
-        </TabsList>
-
-        {/* ── Branches tab ── */}
-        <TabsContent value="branches" className="space-y-3">
-          <SectionCard
-            title="All Branches"
-            description="Click a branch to expand and view its departments"
-            padded={false}
-          >
-            <div className="divide-y divide-border/50">
-              {mockBranches.map((branch) => {
-                const depts = deptsByBranch(branch.id);
-                const isOpen = expanded === branch.id;
-
-                return (
-                  <div key={branch.id}>
-                    <button
-                      className="flex w-full items-center justify-between gap-4 px-6 py-4 text-left transition-colors hover:bg-accent/30"
-                      onClick={() => setExpanded(isOpen ? null : branch.id)}
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                          <Building2 className="h-5 w-5 text-primary" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-foreground">{branch.name}</p>
-                          <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-                            <MapPin className="h-3 w-3" />
-                            {branch.city}, {branch.country}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-6">
-                        <div className="hidden text-center sm:block">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Code</p>
-                          <p className="font-mono text-sm font-bold text-foreground">{branch.code}</p>
-                        </div>
-                        <div className="hidden text-center sm:block">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Manager</p>
-                          <p className="text-sm text-foreground">{branch.manager_name}</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Depts</p>
-                          <p className="text-sm font-bold text-foreground">{branch.department_count}</p>
-                        </div>
-                        <span className={cn(
-                          'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold',
-                          branch.is_active
-                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-                            : 'bg-muted text-muted-foreground',
-                        )}>
-                          {branch.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                        {isOpen
-                          ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                          : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-                      </div>
-                    </button>
-
-                    {isOpen && (
-                      <div className="border-t border-border/50 bg-muted/20 px-6 pb-5 pt-4">
-                        <div className="mb-3 flex items-center justify-between">
-                          <p className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-                            <Users className="h-3.5 w-3.5" /> Departments in {branch.name}
-                          </p>
-                          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-primary">
-                            <Plus className="h-3 w-3" /> Add Department
-                          </Button>
-                        </div>
-                        <div className="grid gap-2 grid-cols-2 md:grid-cols-3">
-                          {depts.map((dept) => (
-                            <div
-                              key={dept.id}
-                              className="flex items-start justify-between rounded-xl border border-border/60 bg-card p-3"
-                            >
-                              <div>
-                                <p className="text-sm font-medium text-foreground">{dept.name}</p>
-                                <p className="mt-0.5 text-xs text-muted-foreground">
-                                  Head: {dept.head_name || '—'}
-                                </p>
-                              </div>
-                              <span className="font-mono text-[10px] text-muted-foreground/60">{dept.code}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {branches.map((b) => {
+          const staff = employees.filter((e) => e.branchId === b.id && e.active).length;
+          const boxes = accounts.filter((a) => a.branchId === b.id && (a.category === 'funds' || a.category === 'banks'));
+          const cashUsd = boxes.reduce((s, a) => s + (usd[a.code] ?? 0), 0);
+          const main = b.cashAccountCode ? byCode.get(b.cashAccountCode) : undefined;
+          return (
+            <div key={b.id} className={cn('card-elevated flex flex-col p-5', !b.active && 'opacity-60')}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-3">
+                  <span className="grid h-11 w-11 place-items-center rounded-xl bg-primary/10 text-primary"><MapPin className="h-5 w-5" /></span>
+                  <div>
+                    <p className="text-[16px] font-bold">{nameOf({ name: b.name, arabic: b.arabic })}</p>
+                    <p className="text-[12px] text-muted-foreground">{b.city}</p>
                   </div>
-                );
-              })}
+                </div>
+                <Toggle checked={b.active} onChange={(v) => updateBranch(b.id, { active: v })} />
+              </div>
+              <div className="mt-4 space-y-2 text-[13px]">
+                <p className="flex items-center gap-2"><Users className="h-4 w-4 text-muted-foreground" />{tr(`Manager: ${b.manager} · ${staff} people`, `المدير: ${b.manager} · ${staff} موظفين`)}</p>
+                {b.phone && <p className="flex items-center gap-2" dir="ltr"><Phone className="h-4 w-4 text-muted-foreground" />{b.phone}</p>}
+                <p className="flex items-center gap-2"><Wallet className="h-4 w-4 text-muted-foreground" />{tr(`Cash here: ${fmtUSD(cashUsd)}`, `النقد هنا: ${fmtUSD(cashUsd)}`)}</p>
+                {main && <p className="text-[12px] text-muted-foreground">{tr('Main cash box', 'الصندوق الرئيسي')}: {nameOf(main)} — <span dir="ltr">{fmtMoney(balances[main.code] ?? 0, main.currency)}</span></p>}
+              </div>
+              <Button size="sm" variant="outline" className="mt-4 gap-1 self-start" onClick={() => open(b)}><Pencil className="h-3.5 w-3.5" />{tr('Edit', 'تعديل')}</Button>
             </div>
-          </SectionCard>
-        </TabsContent>
+          );
+        })}
+      </div>
 
-        {/* ── Departments tab ── */}
-        <TabsContent value="departments">
-          <SectionCard title="All Departments" description="Flat view across the entire organisation" padded={false}>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Department</TableHead>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Branch</TableHead>
-                    <TableHead>Head</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {mockDepartments.map((dept) => (
-                    <TableRow key={dept.id}>
-                      <TableCell className="font-medium text-foreground">{dept.name}</TableCell>
-                      <TableCell className="font-mono text-xs text-muted-foreground">{dept.code}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{dept.branch_name}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{dept.head_name || '—'}</TableCell>
-                      <TableCell>
-                        <span className={cn(
-                          'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold',
-                          dept.is_active
-                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-                            : 'bg-muted text-muted-foreground',
-                        )}>
-                          {dept.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </SectionCard>
-        </TabsContent>
-      </Tabs>
+      <Dialog open={dialog.open} onOpenChange={(o) => setDialog({ open: o })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{dialog.branch ? tr('Edit branch', 'تعديل الفرع') : tr('Add a branch', 'أضف فرعًا')}</DialogTitle>
+            <DialogDescription>{tr('An office where your team works.', 'مكتب يعمل فيه فريقك.')}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={tr('Name', 'الاسم')}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+            <Field label={tr('Name in Arabic', 'الاسم بالعربية')}><Input dir="rtl" value={f.arabic} onChange={(e) => setF({ ...f, arabic: e.target.value })} /></Field>
+            <Field label={tr('City', 'المدينة')}><Input value={f.city} onChange={(e) => setF({ ...f, city: e.target.value })} /></Field>
+            <Field label={tr('Manager', 'المدير')}><Input value={f.manager} onChange={(e) => setF({ ...f, manager: e.target.value })} /></Field>
+            <Field label={tr('Phone', 'الهاتف')}><Input value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></Field>
+            <Field label={tr('Main cash box', 'الصندوق الرئيسي')}><AccountPicker value={f.cash} onChange={(v) => setF({ ...f, cash: v })} categories={['funds']} /></Field>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setDialog({ open: false })}>{tr('Cancel', 'إلغاء')}</Button>
+            <Button variant="gradient" disabled={!f.name.trim()} onClick={save}>{tr('Save', 'حفظ')}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

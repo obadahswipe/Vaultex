@@ -1,409 +1,261 @@
-import { useState } from 'react';
-import { z } from 'zod';
-import { Plus, Trash2, ChevronRight, ChevronLeft, AlertCircle } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, ArrowRight, AlertCircle, Users as UsersIcon } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Field, TextArea, showError } from '@/components/shared/form';
+import { AccountPicker } from '@/components/shared/AccountPicker';
+import { LedgerPreview } from './LedgerPreview';
+import { TYPE_STYLE } from './RequestTypeBadge';
 import { useTranslation } from '@/lib/i18n/useTranslation';
-import { useOperationsStore } from '@/stores/operations.store';
-import { useToast } from '@/hooks/use-toast';
+import { useBooks } from '@/stores/books.store';
+import { useActingUser, useLedger } from '@/lib/data/hooks';
+import { buildRequestLines, lineEffect, PostingError } from '@/lib/data/ledger';
+import { REQUEST_TYPE_LABEL } from '@/lib/data/labels';
+import { crossRate, fmtMoney, round2 } from '@/lib/data/money';
+import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import type { RequestType, ExpenseSubType, RequestPriority, RequestLine } from '@/lib/workbook';
+import type { Category, OperationRequest, RequestType } from '@/lib/data/types';
 
-const REQUEST_TYPES: RequestType[] = [
-  'deposit', 'withdrawal', 'ib_deposit', 'ib_withdrawal',
-  'transfer_to', 'transfer_from', 'expense',
-];
+const CHOICES: RequestType[] = ['deposit', 'withdrawal', 'ib_withdrawal', 'ib_deposit', 'transfer_from', 'expense'];
+const MONEY_PLACES: Category[] = ['funds', 'banks', 'suppliers'];
 
-const TYPE_LABELS: Record<RequestType, { en: string; ar: string }> = {
-  deposit:       { en: 'Deposit',         ar: 'تعزيز' },
-  withdrawal:    { en: 'Withdrawal',       ar: 'سحب' },
-  ib_deposit:    { en: 'IB Deposit',       ar: 'تعزيز ايجنت' },
-  ib_withdrawal: { en: 'IB Withdrawal',    ar: 'سحب ايجنت' },
-  transfer_to:   { en: 'Transfer To',      ar: 'تحويل الى' },
-  transfer_from: { en: 'Transfer From',    ar: 'تحويل من' },
-  expense:       { en: 'Expense',          ar: 'مصروف' },
+/** Which accounts can be picked as "who" for each kind of request. */
+const WHO: Record<RequestType, Category[]> = {
+  deposit: ['clients'],
+  withdrawal: ['clients'],
+  ib_deposit: ['ibs'],
+  ib_withdrawal: ['ibs'],
+  transfer_from: ['clients', 'funds', 'banks', 'suppliers'],
+  transfer_to: ['clients', 'funds', 'banks', 'suppliers'],
+  expense: ['expenses'],
 };
 
-const TYPE_COLORS: Record<RequestType, string> = {
-  deposit:       'border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800',
-  withdrawal:    'border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800',
-  ib_deposit:    'border-sky-300 bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800',
-  ib_withdrawal: 'border-orange-300 bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800',
-  transfer_to:   'border-violet-300 bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800',
-  transfer_from: 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800',
-  expense:       'border-red-300 bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800',
-};
-
-function makeLineId() {
-  return `ln-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-}
-
-function emptyLine(): RequestLine {
-  return { id: makeLineId(), accountNo: '', amount: 0, currency: 'USD' };
-}
-
-interface Step1State {
-  type: RequestType;
-  priority: RequestPriority;
-  date: string;
-  note: string;
-  expenseSubType: ExpenseSubType;
-}
-
-interface NewRequestDialogProps {
+interface Props {
   open: boolean;
   onClose: () => void;
+  /** Pre-select a client account (e.g. when opened from the client page). */
+  presetAccount?: string;
+  presetType?: RequestType;
 }
 
-export function NewRequestDialog({ open, onClose }: NewRequestDialogProps) {
-  const { t, lang } = useTranslation();
-  const { addRequest } = useOperationsStore();
-  const { toast } = useToast();
+export function NewRequestDialog({ open, onClose, presetAccount, presetType }: Props) {
+  const { tr, nameOf, lang } = useTranslation();
+  const addRequest = useBooks((s) => s.addRequest);
+  const me = useActingUser();
+  const { byCode, balances, rates, accounts } = useLedger();
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [step1, setStep1] = useState<Step1State>({
-    type: 'deposit',
-    priority: 'normal',
-    date: new Date().toISOString().slice(0, 10),
-    note: '',
-    expenseSubType: 'compensation',
-  });
-  const [lines, setLines] = useState<RequestLine[]>([emptyLine()]);
+  const [type, setType] = useState<RequestType>('deposit');
+  const [who, setWho] = useState('');
+  const [where, setWhere] = useState('');
+  const [amount, setAmount] = useState('');
+  const [rate, setRate] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [urgent, setUrgent] = useState(false);
+  const [note, setNote] = useState('');
 
-  const isTransfer = step1.type === 'transfer_to' || step1.type === 'transfer_from';
+  useEffect(() => {
+    if (!open) return;
+    setStep(presetType || presetAccount ? 2 : 1);
+    setType(presetType ?? 'deposit');
+    setWho(presetAccount ?? '');
+    setWhere(''); setAmount(''); setRate(''); setUrgent(false); setNote('');
+    setDate(new Date().toISOString().slice(0, 10));
+  }, [open, presetAccount, presetType]);
 
-  const addLine = () => setLines((prev) => [...prev, emptyLine()]);
-  const removeLine = (id: string) => setLines((prev) => prev.filter((l) => l.id !== id));
-  const updateLine = (id: string, patch: Partial<RequestLine>) =>
-    setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+  const whoAcc = byCode.get(who);
+  const whereAcc = byCode.get(where);
+  const isMove = type === 'transfer_from';
+  const needsRate = !!whoAcc && !!whereAcc && whoAcc.currency !== whereAcc.currency;
+  const marketRate = whoAcc && whereAcc ? crossRate(whoAcc.currency, whereAcc.currency, rates) : 1;
 
-  // ── Zod schemas ──────────────────────────────────────────
-  const lineSchema = z.object({
-    accountNo: z.string().min(1, 'Account number required'),
-    amount:    z.number({ message: 'Amount must be a number' }).positive('Amount must be > 0'),
-    currency:  z.string().min(1, 'Currency required'),
-  });
+  useEffect(() => {
+    if (needsRate) setRate(String(round2(marketRate * 10000) / 10000));
+    else setRate('');
+  }, [needsRate, marketRate]);
 
-  const requestSchema = z.object({
-    date:  z.string().min(1, 'Date required'),
-    lines: z.array(lineSchema).min(1, 'At least one line required'),
-  });
+  const amt = Number(amount);
+  const rateNum = Number(rate);
+  const received = needsRate && rateNum > 0 ? round2(amt * rateNum) : undefined;
 
-  const [zodErrors, setZodErrors] = useState<string[]>([]);
+  const draft = useMemo((): OperationRequest | null => (whoAcc && whereAcc && amt > 0 ? {
+    id: 'draft', requestNo: 0, type, date, priority: urgent ? 'urgent' : 'normal', status: 'pending',
+    lines: [{
+      id: 'ln-draft', accountNo: whoAcc.code, accountName: whoAcc.name, amount: amt, currency: whoAcc.currency,
+      counterAccountCode: whereAcc.code,
+      exchangeRate: needsRate ? rateNum : undefined, receivedAmount: received,
+    }],
+    createdBy: me.email, timeline: [], note: note || undefined,
+  } : null), [whoAcc, whereAcc, amt, type, date, urgent, needsRate, rateNum, received, me.email, note]);
 
-  const handleSubmit = () => {
-    const validLines = lines.filter((l) => l.accountNo || l.amount);
-    const result = requestSchema.safeParse({
-      date: step1.date,
-      lines: validLines.map((l) => ({ ...l, amount: Number(l.amount) })),
-    });
+  const preview = useMemo(() => {
+    if (!draft) return { lines: [], error: '' };
+    try { return { lines: buildRequestLines(draft, accounts, rates), error: '' }; }
+    catch (e) { return { lines: [], error: e instanceof PostingError ? (lang === 'ar' ? e.ar : e.en) : String(e) }; }
+  }, [draft, accounts, rates, lang]);
 
-    if (!result.success) {
-      const errs = result.error.issues.map((e) => e.message);
-      setZodErrors(errs);
-      return;
+  const after = whoAcc && preview.lines.length
+    ? (balances[whoAcc.code] ?? 0) + preview.lines.filter((l) => l.accountCode === whoAcc.code).reduce((s, l) => s + lineEffect(whoAcc, l), 0)
+    : null;
+
+  const sentence = () => {
+    if (!whoAcc || !whereAcc || !(amt > 0)) return '';
+    const m = fmtMoney(amt, whoAcc.currency);
+    const w = nameOf(whoAcc); const p = nameOf(whereAcc);
+    switch (type) {
+      case 'deposit': return tr(`${w} adds ${m}. The money goes into ${p}.`, `${w} يضيف ${m}. ويدخل المال إلى ${p}.`);
+      case 'withdrawal': return tr(`${w} takes out ${m}. The money leaves ${p}.`, `${w} يسحب ${m}. ويخرج المال من ${p}.`);
+      case 'ib_deposit': return tr(`${w} adds ${m} into ${p}.`, `${w} يضيف ${m} إلى ${p}.`);
+      case 'ib_withdrawal': return tr(`You pay ${w} ${m} from ${p}.`, `تدفع لـ ${w} مبلغ ${m} من ${p}.`);
+      case 'expense': return tr(`You pay ${m} for "${w}" from ${p}.`, `تدفع ${m} مقابل "${w}" من ${p}.`);
+      default: return tr(`Move ${m} from ${w} to ${p}.`, `انقل ${m} من ${w} إلى ${p}.`);
     }
-    setZodErrors([]);
-
-    addRequest({
-      type: step1.type,
-      expenseSubType: step1.type === 'expense' ? step1.expenseSubType : undefined,
-      date: step1.date,
-      priority: step1.priority,
-      lines: result.data.lines as typeof lines,
-      createdBy: 'admin@demo.com',
-      note: step1.note || undefined,
-    });
-    toast({ title: t('toast.requestCreated') });
-    handleClose();
   };
 
-  const handleClose = () => {
-    setStep(1);
-    setStep1({ type: 'deposit', priority: 'normal', date: new Date().toISOString().slice(0, 10), note: '', expenseSubType: 'compensation' });
-    setLines([emptyLine()]);
-    onClose();
+  const canNext = !!whoAcc && !!whereAcc && amt > 0 && (!needsRate || rateNum > 0) && !preview.error;
+
+  const submit = () => {
+    if (!draft) return;
+    try {
+      const lines = draft.lines.map((l) => ({ ...l, id: `ln-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` }));
+      const req = addRequest({
+        type, date, priority: urgent ? 'urgent' : 'normal', lines, createdBy: me.email, note: note || undefined, source: 'staff',
+      });
+      toast({
+        title: tr(`Request #${req.requestNo} is made`, `تم إنشاء الطلب رقم ${req.requestNo}`),
+        description: tr('Now a manager needs to say OK.', 'الآن يحتاج إلى موافقة المدير.'),
+      });
+      onClose();
+    } catch (e) { showError(e); }
   };
 
-  const totalAmount = lines.reduce((s, l) => s + (Number(l.amount) || 0), 0);
+  const whoLabel = type === 'expense' ? tr('What is the cost for?', 'ما نوع المصروف؟')
+    : type === 'ib_deposit' || type === 'ib_withdrawal' ? tr('Which partner?', 'أي شريك؟')
+    : isMove ? tr('Move money from', 'انقل المال من')
+    : tr('Which client?', 'أي زبون؟');
+  const whereLabel = isMove ? tr('Move money to', 'انقل المال إلى')
+    : type === 'deposit' || type === 'ib_deposit' ? tr('Where does the money go in?', 'إلى أين يدخل المال؟')
+    : tr('Where does the money come out of?', 'من أين يخرج المال؟');
+  const whereCats: Category[] = isMove
+    ? (whoAcc?.category === 'clients' ? ['clients'] : MONEY_PLACES)
+    : MONEY_PLACES;
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-lg">
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-h-[92vh] max-w-xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{t('ops.requests.new')}</DialogTitle>
+          <DialogTitle>{tr('New money request', 'طلب مال جديد')}</DialogTitle>
           <DialogDescription>
-            {t('ops.requests.subtitle')}
+            {step === 1 && tr('Step 1 of 3 · What is happening?', 'الخطوة 1 من 3 · ماذا يحدث؟')}
+            {step === 2 && tr('Step 2 of 3 · Fill in the details', 'الخطوة 2 من 3 · املأ التفاصيل')}
+            {step === 3 && tr('Step 3 of 3 · Check and send', 'الخطوة 3 من 3 · راجع وأرسل')}
           </DialogDescription>
         </DialogHeader>
 
-        {/* Step indicator */}
-        <div className="flex items-center gap-2 py-1">
-          {[1, 2, 3].map((s) => (
-            <div key={s} className="flex items-center gap-2">
-              <div className={cn(
-                'flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold transition-colors',
-                step === s ? 'bg-primary text-primary-foreground' : step > s ? 'bg-emerald-500 text-white' : 'bg-muted text-muted-foreground',
-              )}>
-                {step > s ? '✓' : s}
-              </div>
-              {s < 3 && <div className={cn('h-px w-8 transition-colors', step > s ? 'bg-emerald-500' : 'bg-border')} />}
-            </div>
-          ))}
-          <span className="ms-2 text-xs text-muted-foreground">
-            {step === 1 && 'Request type'} {step === 2 && 'Account lines'} {step === 3 && 'Review'}
-          </span>
+        {/* progress */}
+        <div className="flex gap-1.5">
+          {[1, 2, 3].map((n) => <div key={n} className={cn('h-1.5 flex-1 rounded-full', n <= step ? 'bg-primary' : 'bg-muted')} />)}
         </div>
 
-        {/* Step 1: Type + meta */}
         {step === 1 && (
-          <div className="space-y-4">
-            <div>
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {t('req.field.requestNo').replace('#', '')} type
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {REQUEST_TYPES.map((rt) => (
-                  <button
-                    key={rt}
-                    type="button"
-                    onClick={() => setStep1((s) => ({ ...s, type: rt }))}
-                    className={cn(
-                      'rounded-xl border-2 p-3 text-left text-sm font-semibold transition-all',
-                      step1.type === rt
-                        ? TYPE_COLORS[rt] + ' ring-2 ring-offset-1 ring-current'
-                        : 'border-border bg-card hover:border-primary/40 hover:bg-accent/30',
-                    )}
-                  >
-                    {lang === 'ar' ? TYPE_LABELS[rt].ar : TYPE_LABELS[rt].en}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {step1.type === 'expense' && (
-              <div>
-                <label className="mb-1 block text-xs font-medium">{t('req.field.expenseSub')}</label>
-                <select
-                  value={step1.expenseSubType}
-                  onChange={(e) => setStep1((s) => ({ ...s, expenseSubType: e.target.value as ExpenseSubType }))}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          <div className="grid gap-2 sm:grid-cols-2">
+            {CHOICES.map((c) => {
+              const l = REQUEST_TYPE_LABEL[c];
+              const s = TYPE_STYLE[c];
+              const Icon = s.icon;
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => { setType(c); setWho(''); setWhere(''); setStep(2); }}
+                  className={cn('flex items-start gap-3 rounded-2xl border p-4 text-start transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-shadow-2', type === c ? 'border-primary/50 bg-primary/5' : 'border-border/60 bg-card')}
                 >
-                  <option value="compensation">{t('req.expense.compensation')}</option>
-                  <option value="gift">{t('req.expense.gift')}</option>
-                  <option value="transfer_comm">{t('req.expense.transfer_comm')}</option>
-                </select>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium">{t('field.date')}</label>
-                <Input
-                  type="date"
-                  value={step1.date}
-                  onChange={(e) => setStep1((s) => ({ ...s, date: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium">{t('req.field.priority')}</label>
-                <div className="flex gap-2">
-                  {(['normal', 'urgent'] as RequestPriority[]).map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => setStep1((s) => ({ ...s, priority: p }))}
-                      className={cn(
-                        'flex-1 rounded-lg border py-2 text-xs font-semibold transition-colors',
-                        step1.priority === p
-                          ? p === 'urgent'
-                            ? 'border-red-400 bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300'
-                            : 'border-primary bg-primary/10 text-primary'
-                          : 'border-border text-muted-foreground hover:bg-accent/40',
-                      )}
-                    >
-                      {p === 'urgent' ? t('req.field.urgent') : t('req.field.normal')}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-medium">{t('field.note')}</label>
-              <Input
-                value={step1.note}
-                onChange={(e) => setStep1((s) => ({ ...s, note: e.target.value }))}
-                placeholder="Optional note…"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Step 2: Lines */}
-        {step === 2 && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('req.field.lines')}</p>
-              <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={addLine}>
-                <Plus className="h-3.5 w-3.5" /> {t('req.field.moreOptions')}
-              </Button>
-            </div>
-
-            {lines.map((line, i) => (
-              <div key={line.id} className="rounded-xl border border-border/60 bg-card p-3 space-y-2">
-                {lines.length > 1 && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-muted-foreground uppercase">Line {i + 1}</span>
-                    <button onClick={() => removeLine(line.id)} className="text-destructive hover:opacity-80">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="mb-1 block text-xs font-medium">{t('req.field.accountNo')} *</label>
-                    <Input
-                      value={line.accountNo}
-                      onChange={(e) => updateLine(line.id, { accountNo: e.target.value })}
-                      placeholder="12166"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium">{t('field.currency')}</label>
-                    <select
-                      value={line.currency}
-                      onChange={(e) => updateLine(line.id, { currency: e.target.value })}
-                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    >
-                      {['USD', 'TRY', 'EUR', 'LBP', 'GBP'].map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium">{t('field.amount')} *</label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={line.amount || ''}
-                    onChange={(e) => updateLine(line.id, { amount: Number(e.target.value) })}
-                    placeholder="0.00"
-                  />
-                </div>
-                {isTransfer && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="mb-1 block text-xs font-medium">{t('req.field.exchangeRate')}</label>
-                      <Input
-                        type="number"
-                        step="0.001"
-                        value={line.exchangeRate ?? ''}
-                        onChange={(e) => updateLine(line.id, { exchangeRate: e.target.value ? Number(e.target.value) : undefined })}
-                        placeholder="45.50"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-medium">{t('req.field.receivedAmt')}</label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={line.receivedAmount ?? ''}
-                        onChange={(e) => updateLine(line.id, { receivedAmount: e.target.value ? Number(e.target.value) : undefined })}
-                        placeholder="0.00"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {totalAmount > 0 && (
-              <div className="flex items-center justify-between rounded-lg bg-primary/5 px-3 py-2">
-                <span className="text-xs font-semibold text-muted-foreground">Total</span>
-                <span className="font-mono text-sm font-bold text-primary">${totalAmount.toLocaleString()}</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Step 3: Review */}
-        {step === 3 && (
-          <div className="space-y-3">
-            <div className="rounded-xl border border-border/60 bg-card p-4 space-y-3">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm font-bold">{lang === 'ar' ? TYPE_LABELS[step1.type].ar : TYPE_LABELS[step1.type].en}</p>
-                  <p className="text-xs text-muted-foreground">{step1.date}</p>
-                </div>
-                {step1.priority === 'urgent' && (
-                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-600 dark:bg-red-950/40 dark:text-red-300">
-                    {t('req.field.urgent')}
+                  <span className={cn('grid h-10 w-10 shrink-0 place-items-center rounded-xl', s.cls)}><Icon className="h-5 w-5" /></span>
+                  <span>
+                    <span className="block text-[15px] font-semibold">{tr(l.en, l.ar)}</span>
+                    <span className="block text-[12px] text-muted-foreground">{tr(l.helpEn, l.helpAr)}</span>
                   </span>
-                )}
-              </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
-              <div className="space-y-1.5">
-                {lines.filter((l) => l.accountNo && l.amount > 0).map((line, _i) => (
-                  <div key={line.id} className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-sm">
-                    <span className="font-mono text-xs font-semibold text-muted-foreground">{line.accountNo}</span>
-                    <div className="text-right">
-                      <span className="font-semibold">${line.amount.toLocaleString()}</span>
-                      <span className="ms-1 text-xs text-muted-foreground">{line.currency}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {totalAmount > 0 && (
-                <div className="flex justify-between border-t border-border pt-2">
-                  <span className="text-xs font-semibold">Total</span>
-                  <span className="font-mono text-sm font-bold">${totalAmount.toLocaleString()}</span>
-                </div>
-              )}
-
-              {step1.note && (
-                <p className="text-xs text-muted-foreground italic">{step1.note}</p>
-              )}
+        {step === 2 && (
+          <div className="space-y-4">
+            <Field label={whoLabel}>
+              <AccountPicker value={who} onChange={(v) => { setWho(v); if (v === where) setWhere(''); }} categories={WHO[type]} />
+            </Field>
+            <Field label={whereLabel} help={isMove ? undefined : tr('A cash box, a bank, or a money partner.', 'صندوق نقدي أو بنك أو شريك مالي.')}>
+              <AccountPicker value={where} onChange={setWhere} categories={whereCats} exclude={[who]} />
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={tr(`How much${whoAcc ? ` (${whoAcc.currency})` : ''}?`, `كم المبلغ${whoAcc ? ` (${whoAcc.currency})` : ''}؟`)}>
+                <Input type="number" inputMode="decimal" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
+              </Field>
+              <Field label={tr('Date', 'التاريخ')}>
+                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              </Field>
             </div>
-          </div>
-        )}
-
-        {/* Zod validation errors */}
-        {zodErrors.length > 0 && (
-          <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 space-y-1">
-            {zodErrors.map((e) => (
-              <p key={e} className="flex items-center gap-1.5 text-xs text-destructive font-medium">
-                <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {e}
-              </p>
-            ))}
-          </div>
-        )}
-
-        {/* Navigation */}
-        <div className="flex justify-between gap-2 pt-1">
-          <Button type="button" variant="ghost" size="sm" onClick={step === 1 ? handleClose : () => setStep((s) => (s - 1) as 1 | 2 | 3)}>
-            {step === 1 ? t('action.cancel') : (
-              <><ChevronLeft className="h-4 w-4 me-1" /> Back</>
+            {needsRate && whoAcc && whereAcc && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
+                <Field
+                  label={tr(`Exchange rate: 1 ${whoAcc.currency} = ? ${whereAcc.currency}`, `سعر الصرف: 1 ${whoAcc.currency} = ؟ ${whereAcc.currency}`)}
+                  help={received != null ? tr(`${nameOf(whereAcc)} will change by ${fmtMoney(received, whereAcc.currency)}. Today's rate is ${marketRate.toFixed(4)}.`, `سيتغير ${nameOf(whereAcc)} بمقدار ${fmtMoney(received, whereAcc.currency)}. سعر اليوم ${marketRate.toFixed(4)}.`) : undefined}
+                >
+                  <Input type="number" inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} />
+                </Field>
+              </div>
             )}
-          </Button>
-          {step < 3 ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="gradient"
-              onClick={() => setStep((s) => (s + 1) as 2 | 3)}
-              disabled={step === 2 && !lines.some((l) => l.accountNo && l.amount > 0)}
-            >
-              Next <ChevronRight className="h-4 w-4 ms-1" />
+            <Field label={tr('Note (optional)', 'ملاحظة (اختياري)')}>
+              <TextArea value={note} onChange={(e) => setNote(e.target.value)} placeholder={tr('For example: bank transfer number 12345', 'مثال: رقم الحوالة البنكية 12345')} />
+            </Field>
+            <label className="flex items-center gap-2 text-[13px]">
+              <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} className="h-4 w-4 rounded" />
+              {tr('This is urgent', 'هذا مستعجل')}
+            </label>
+            {preview.error && (
+              <p className="flex items-start gap-2 rounded-xl bg-destructive/10 p-3 text-[13px] text-destructive">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{preview.error}
+              </p>
+            )}
+          </div>
+        )}
+
+        {step === 3 && draft && (
+          <div className="space-y-4">
+            <p className="rounded-2xl bg-primary/5 p-4 text-[15px] font-medium leading-relaxed">{sentence()}</p>
+            {after != null && whoAcc && whoAcc.category === 'clients' && (
+              <p className="text-[13px] text-muted-foreground">
+                {tr(`After this, ${nameOf(whoAcc)} will have ${fmtMoney(after, whoAcc.currency)}.`, `بعد ذلك سيكون لدى ${nameOf(whoAcc)} ${fmtMoney(after, whoAcc.currency)}.`)}
+                {after < 0 && <span className="ms-1 font-semibold text-destructive">{tr('That is less than zero!', 'وهذا أقل من صفر!')}</span>}
+              </p>
+            )}
+            <div>
+              <p className="mb-2 text-[13px] font-semibold">{tr('What will change in the books', 'ما الذي سيتغير في الدفاتر')}</p>
+              <LedgerPreview lines={preview.lines} />
+            </div>
+            <p className="flex items-start gap-2 rounded-xl bg-muted/60 p-3 text-[13px] text-muted-foreground">
+              <UsersIcon className="mt-0.5 h-4 w-4 shrink-0" />
+              {tr('Next, a different person must say OK. Then the money is sent, and then it is written in the books.', 'بعد ذلك يجب أن يوافق شخص آخر. ثم يُرسل المال، ثم يُسجّل في الدفاتر.')}
+            </p>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between gap-2 pt-2">
+          {step > 1 ? (
+            <Button variant="ghost" onClick={() => setStep((s) => (s - 1) as 1 | 2)} className="gap-1">
+              <ArrowLeft className="h-4 w-4 rtl:rotate-180" /> {tr('Back', 'رجوع')}
             </Button>
-          ) : (
-            <Button type="button" size="sm" variant="gradient" onClick={handleSubmit}>
-              {t('action.add')} Request
+          ) : <span />}
+          {step === 2 && (
+            <Button variant="gradient" disabled={!canNext} onClick={() => setStep(3)} className="gap-1">
+              {tr('Next', 'التالي')} <ArrowRight className="h-4 w-4 rtl:rotate-180" />
             </Button>
+          )}
+          {step === 3 && (
+            <Button variant="gradient" onClick={submit}>{tr('Make the request', 'أنشئ الطلب')}</Button>
           )}
         </div>
       </DialogContent>

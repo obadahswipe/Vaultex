@@ -1,42 +1,21 @@
-import { Navigate } from 'react-router-dom';
-import { useAuthStore } from '@/stores/auth.store';
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
+import { Lock } from 'lucide-react';
+import { useActingUser } from '@/lib/data/hooks';
+import { isAdmin } from '@/lib/roles';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
-interface ProtectedRouteProps {
-  children: ReactNode;
-  /** Allowed roles. If empty, any authenticated user is allowed. */
-  roles?: string[];
-  /** Where to redirect if unauthorized (default: '/') */
-  fallback?: string;
+/** Shows the page only to managers. Others see a short, friendly note instead. */
+export function AdminOnly({ children }: { children: ReactNode }) {
+  const me = useActingUser();
+  const { tr } = useTranslation();
+  if (isAdmin(me.role)) return <>{children}</>;
+  return (
+    <div className="mx-auto max-w-md py-20 text-center">
+      <Lock className="mx-auto mb-4 h-10 w-10 text-muted-foreground" />
+      <h1 className="text-xl font-bold">{tr('Only managers can open this page', 'المدراء فقط يستطيعون فتح هذه الصفحة')}</h1>
+      <p className="mt-2 text-[14px] text-muted-foreground">{tr('Ask your manager if you need something changed here.', 'اطلب من مديرك إذا احتجت تغيير شيء هنا.')}</p>
+      <Link to="/" className="mt-6 inline-block text-[14px] font-medium text-primary">{tr('Go to the home page', 'اذهب إلى الصفحة الرئيسية')}</Link>
+    </div>
+  );
 }
-
-/**
- * Wraps a route so only users with matching roles can access it.
- * Must be used inside an already-authenticated layout (AppLayout handles the
- * top-level token check; ProtectedRoute handles fine-grained role checks).
- */
-export function ProtectedRoute({ children, roles = [], fallback = '/' }: ProtectedRouteProps) {
-  const user = useAuthStore((s) => s.user);
-
-  // No role restriction — any authenticated user allowed
-  if (roles.length === 0) return <>{children}</>;
-
-  // User object not loaded (shouldn't happen inside AppLayout, but be safe)
-  if (!user) return <Navigate to="/login" replace />;
-
-  // Check role
-  if (!roles.includes(user.role)) {
-    return <Navigate to={fallback} replace />;
-  }
-
-  return <>{children}</>;
-}
-
-/** Convenience wrappers */
-export const AdminOnly = ({ children }: { children: ReactNode }) => (
-  <ProtectedRoute roles={['admin', 'financial_manager', 'CFO']}>{children}</ProtectedRoute>
-);
-
-export const ManagerOnly = ({ children }: { children: ReactNode }) => (
-  <ProtectedRoute roles={['admin', 'financial_manager', 'CFO', 'operations_staff']}>{children}</ProtectedRoute>
-);

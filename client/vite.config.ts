@@ -10,9 +10,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'offline.html', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-512-maskable.png'],
       manifest: {
-        name: 'Vaultex FX Accounting',
+        name: 'Vaultex',
         short_name: 'Vaultex',
-        description: 'Enterprise-grade multi-currency FX accounting platform with real-time reconciliation, IB management, and client portals.',
+        description: 'Run your whole forex company from one place: money, clients, partners and reports.',
         lang: 'en',
         dir: 'ltr',
         theme_color: '#2563eb',

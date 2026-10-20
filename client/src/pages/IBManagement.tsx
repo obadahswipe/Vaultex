@@ -1,279 +1,165 @@
-import { useMemo, useState } from 'react';
-import { Search, Plus, ChevronDown, ChevronUp, Eye, EyeOff, Users, GitBranch, DollarSign } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Plus, Network, Users, HandCoins, Pencil, Wallet } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { PageHint } from '@/components/shared/PageHint';
-import { SectionCard } from '@/components/shared/SectionCard';
 import { StatCard } from '@/components/shared/StatCard';
-
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { useClientsStore } from '@/stores/clients.store';
+import { Field, NativeSelect, TextArea, Toggle, attempt } from '@/components/shared/form';
+import { NewRequestDialog } from '@/components/operations/NewRequestDialog';
+import { useBooks } from '@/stores/books.store';
+import { usePartnerStats } from '@/lib/data/partners';
+import { fmtUSD } from '@/lib/data/money';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import { cn } from '@/lib/utils';
-import { useToast } from '@/hooks/use-toast';
-import type { IBClassification } from '@/lib/workbook';
+import type { IBRecord } from '@/lib/data/types';
 
-const ibClassColors: Record<string, string> = {
-  trusted:         'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
-  hard_debt:       'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
-  impossible_debt: 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300',
+const LABELS: Record<string, { en: string; ar: string; tone: 'success' | 'warning' | 'destructive' }> = {
+  trusted:         { en: 'Trusted',          ar: 'موثوق',        tone: 'success' },
+  hard_debt:       { en: 'Slow to pay back', ar: 'بطيء السداد',  tone: 'warning' },
+  impossible_debt: { en: 'Will not pay back', ar: 'لن يسدد',     tone: 'destructive' },
 };
 
-function IBClassBadge({ cls, lang }: { cls: IBClassification; lang: string }) {
-  const labelMap: Record<string, { en: string; ar: string }> = {
-    trusted:         { en: 'Trusted',         ar: 'موثوق' },
-    hard_debt:       { en: 'Hard debt',       ar: 'ديون صعبة' },
-    impossible_debt: { en: 'Impossible debt', ar: 'ديون مستحيلة' },
+function PartnerDialog({ partner, open, onClose }: { partner?: IBRecord; open: boolean; onClose: () => void }) {
+  const { tr, nameOf } = useTranslation();
+  const addIB = useBooks((s) => s.addIB);
+  const updateIB = useBooks((s) => s.updateIB);
+  const ibs = useBooks((s) => s.ibs);
+  const [f, setF] = useState({ name: '', arabic: '', email: '', mt5: '', rate: '5', parent: '', label: 'trusted', notes: '', active: true });
+  useEffect(() => {
+    if (!open) return;
+    setF(partner
+      ? { name: partner.name, arabic: partner.arabic ?? '', email: partner.email ?? '', mt5: partner.mt5AccountNo, rate: String(partner.commissionRate), parent: partner.parentIBId ?? '', label: partner.classification, notes: partner.notes ?? '', active: partner.active }
+      : { name: '', arabic: '', email: '', mt5: String(700100 + ibs.length + 1), rate: '5', parent: '', label: 'trusted', notes: '', active: true });
+  }, [open, partner, ibs.length]);
+  const save = () => {
+    const data = {
+      name: f.name.trim(), arabic: f.arabic.trim() || undefined, email: f.email || undefined, mt5AccountNo: f.mt5,
+      commissionRate: Number(f.rate) || 0, parentIBId: f.parent || undefined, classification: f.label, notes: f.notes || undefined, active: f.active,
+    };
+    const ok = partner
+      ? attempt(() => updateIB(partner.id, data), tr('Saved', 'تم الحفظ'))
+      : attempt(() => addIB({ ...data, linkedClientIds: [], subIBIds: [] }), tr(`${data.name} was added`, `تمت إضافة ${data.arabic ?? data.name}`));
+    if (ok) onClose();
   };
-  const cfg = labelMap[cls] ?? { en: cls, ar: cls };
-  const color = ibClassColors[cls] ?? 'bg-muted text-muted-foreground';
   return (
-    <span className={cn('inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold', color)}>
-      {lang === 'ar' ? cfg.ar : cfg.en}
-    </span>
-  );
-}
-
-function AddIBDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { addIB, ibClassifications } = useClientsStore();
-  const { t } = useTranslation();
-  const { toast } = useToast();
-  const [form, setForm] = useState({
-    name: '', mt5AccountNo: '', treeAccountCode: '', classification: 'trusted' as IBClassification,
-    commissionRate: '', spreadGrant: '', notes: '',
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.name || !form.mt5AccountNo) return;
-    addIB({
-      name: form.name, mt5AccountNo: form.mt5AccountNo,
-      treeAccountCode: form.treeAccountCode || undefined,
-      classification: form.classification,
-      active: true, linkedClientIds: [], subIBIds: [],
-      commissionRate: form.commissionRate ? Number(form.commissionRate) : undefined,
-      spreadGrant: form.spreadGrant ? Number(form.spreadGrant) : undefined,
-      totalCommissionEarned: 0, totalCommissionPaid: 0,
-      notes: form.notes || undefined,
-    });
-    toast({ title: t('toast.ibAdded') });
-    onClose();
-    setForm({ name: '', mt5AccountNo: '', treeAccountCode: '', classification: 'trusted', commissionRate: '', spreadGrant: '', notes: '' });
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{t('ib.mgmt.add')}</DialogTitle>
-          <DialogDescription>{t('ib.mgmt.subtitle')}</DialogDescription>
+          <DialogTitle>{partner ? tr('Edit partner', 'تعديل الشريك') : tr('Add a partner', 'أضف شريكًا')}</DialogTitle>
+          <DialogDescription>{tr('A partner (IB) brings you clients. You pay them for every lot their clients trade.', 'الشريك (الوكيل) يحضر لك الزبائن. وتدفع له عن كل لوت يتداوله زبائنه.')}</DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-3 pt-2">
-          <div>
-            <label className="mb-1 block text-xs font-medium">{t('field.name')} *</label>
-            <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="IB name" required />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium">MT5 Account # *</label>
-              <Input value={form.mt5AccountNo} onChange={(e) => setForm((f) => ({ ...f, mt5AccountNo: e.target.value }))} placeholder="22121" required />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium">{t('clients.treeAccount')}</label>
-              <Input value={form.treeAccountCode} onChange={(e) => setForm((f) => ({ ...f, treeAccountCode: e.target.value }))} placeholder="Code" />
-            </div>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium">{t('clients.classification')}</label>
-            <select value={form.classification} onChange={(e) => setForm((f) => ({ ...f, classification: e.target.value }))}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-              {ibClassifications.map((k) => (
-                <option key={k} value={k}>{k.replace(/_/g, ' ')}</option>
-              ))}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium">{t('ib.mgmt.commRate')} (%)</label>
-              <Input type="number" step="0.1" value={form.commissionRate} onChange={(e) => setForm((f) => ({ ...f, commissionRate: e.target.value }))} placeholder="2.5" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium">{t('ib.mgmt.spreadGrant')}</label>
-              <Input type="number" step="0.01" value={form.spreadGrant} onChange={(e) => setForm((f) => ({ ...f, spreadGrant: e.target.value }))} placeholder="0.3" />
-            </div>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium">{t('field.note')}</label>
-            <Input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Optional notes…" />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="ghost" size="sm" onClick={onClose}>{t('action.cancel')}</Button>
-            <Button type="submit" size="sm" variant="gradient">{t('action.add')}</Button>
-          </div>
-        </form>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={tr('Name', 'الاسم')}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+          <Field label={tr('Name in Arabic', 'الاسم بالعربية')}><Input dir="rtl" value={f.arabic} onChange={(e) => setF({ ...f, arabic: e.target.value })} /></Field>
+          <Field label={tr('Email', 'البريد الإلكتروني')}><Input value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
+          <Field label={tr('MT5 account number', 'رقم حساب MT5')}><Input value={f.mt5} onChange={(e) => setF({ ...f, mt5: e.target.value })} /></Field>
+          <Field label={tr('Pay for every 1 lot (USD)', 'الأجر عن كل لوت (دولار)')} help={tr('Most partners get $3 to $10.', 'معظم الشركاء يحصلون على 3 إلى 10 دولارات.')}>
+            <Input type="number" value={f.rate} onChange={(e) => setF({ ...f, rate: e.target.value })} />
+          </Field>
+          <Field label={tr('Works under another partner', 'يعمل تحت شريك آخر')}>
+            <NativeSelect value={f.parent} onChange={(e) => setF({ ...f, parent: e.target.value })}>
+              <option value="">{tr('No', 'لا')}</option>
+              {ibs.filter((i) => i.id !== partner?.id).map((i) => <option key={i.id} value={i.id}>{nameOf(i)}</option>)}
+            </NativeSelect>
+          </Field>
+          <Field label={tr('Label', 'التصنيف')}>
+            <NativeSelect value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })}>
+              {Object.entries(LABELS).map(([k, v]) => <option key={k} value={k}>{tr(v.en, v.ar)}</option>)}
+            </NativeSelect>
+          </Field>
+          <label className="flex items-center gap-2 self-end pb-2 text-[13px]">
+            <Toggle checked={f.active} onChange={(v) => setF({ ...f, active: v })} /> {f.active ? tr('Active', 'نشط') : tr('Turned off', 'متوقف')}
+          </label>
+        </div>
+        <Field label={tr('Notes', 'ملاحظات')}><TextArea value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Field>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>{tr('Cancel', 'إلغاء')}</Button>
+          <Button variant="gradient" disabled={!f.name.trim()} onClick={save}>{tr('Save', 'حفظ')}</Button>
+        </div>
       </DialogContent>
     </Dialog>
   );
 }
 
 export default function IBManagement() {
-  const { t, lang } = useTranslation();
-  const { ibs, clients, setIBActive } = useClientsStore();
-  const [search, setSearch] = useState('');
-  const [showInactive, setShowInactive] = useState(false);
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [addOpen, setAddOpen] = useState(false);
+  const { tr, nameOf } = useTranslation();
+  const ibs = useBooks((s) => s.ibs);
+  const clients = useBooks((s) => s.clients);
+  const [params, setParams] = useSearchParams();
+  const [dialog, setDialog] = useState<{ open: boolean; partner?: IBRecord }>({ open: params.get('new') === '1' });
+  const [payFor, setPayFor] = useState<string | null>(null);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return ibs.filter((ib) => {
-      if (!showInactive && !ib.active) return false;
-      if (!q) return true;
-      return ib.name.toLowerCase().includes(q) || ib.mt5AccountNo.includes(q);
-    });
-  }, [ibs, search, showInactive]);
+  useEffect(() => { if (params.get('new') === '1') setDialog({ open: true }); }, [params]);
 
-  const activeIBs = ibs.filter((ib) => ib.active);
-  const totalOutstanding = ibs.reduce((sum, ib) => sum + ((ib.totalCommissionEarned ?? 0) - (ib.totalCommissionPaid ?? 0)), 0);
+  const today = new Date().toISOString().slice(0, 10);
+  const stats = usePartnerStats(today.slice(0, 8) + '01', today);
+  const totalOwed = stats.reduce((s, r) => s + r.owed, 0);
+  const totalEarned = stats.reduce((s, r) => s + r.earned, 0);
+  const brought = clients.filter((c) => c.ibParentId).length;
 
   return (
     <div className="space-y-8">
       <PageHeader
-        title={t('ib.mgmt.title')}
-        subtitle={t('ib.mgmt.subtitle')}
+        title={tr('Partners (IBs)', 'الشركاء (الوكلاء)')}
+        subtitle={tr('People and companies that bring you new clients.', 'أشخاص وشركات يحضرون لك زبائن جددًا.')}
         hint={
-          <PageHint id="ib-management" title={t('hint.ibMgmt.title')}>
-            {t('hint.ibMgmt.body')}
+          <PageHint id="ib-v2" title={tr('How partners get paid', 'كيف يحصل الشركاء على أجرهم')}>
+            {tr('Each partner earns a fixed amount for every lot their clients trade. Vaultex adds it up when you close the day. Press "Pay" to send them their money.', 'كل شريك يربح مبلغًا ثابتًا عن كل لوت يتداوله زبائنه. فولتكس يجمعه عند إغلاق اليوم. اضغط "ادفع" لترسل له ماله.')}
           </PageHint>
         }
-        actions={
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setShowInactive((v) => !v)} className={cn('gap-1.5 text-xs', showInactive && 'text-primary')}>
-              {showInactive ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-              {t('ib.mgmt.showInactive')}
-            </Button>
-            <Button variant="gradient" size="sm" className="gap-1.5" onClick={() => setAddOpen(true)}>
-              <Plus className="h-3.5 w-3.5" /> {t('ib.mgmt.add')}
-            </Button>
-          </div>
-        }
+        actions={<Button variant="gradient" className="gap-1.5" onClick={() => setDialog({ open: true })}><Plus className="h-4 w-4" />{tr('Add a partner', 'أضف شريكًا')}</Button>}
       />
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard label={lang === 'ar' ? 'إجمالي الوكلاء' : 'Total IBs'} value={ibs.length} icon={GitBranch} accent="blue" />
-        <StatCard label={lang === 'ar' ? 'وكلاء نشطون' : 'Active IBs'} value={activeIBs.length} icon={Users} accent="green" />
-        <StatCard label={lang === 'ar' ? 'عمولة معلقة' : 'Outstanding commission'} value={`$${totalOutstanding.toLocaleString()}`} icon={DollarSign} accent="amber" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label={tr('Active partners', 'الشركاء النشطون')} value={ibs.filter((i) => i.active).length} icon={Network} accent="blue" deltaLabel={tr(`${ibs.length} in total`, `${ibs.length} بالمجموع`)} />
+        <StatCard label={tr('Clients they brought', 'زبائن أحضروهم')} value={brought} icon={Users} accent="violet" deltaLabel={tr(`of ${clients.length} clients`, `من ${clients.length} زبونًا`)} />
+        <StatCard label={tr('Earned this month', 'ربحوه هذا الشهر')} value={fmtUSD(totalEarned)} icon={HandCoins} accent="green" deltaLabel={tr('Partner pay booked', 'أجور الشركاء المسجلة')} />
+        <StatCard label={tr('You owe them now', 'تدين لهم الآن')} value={fmtUSD(totalOwed)} icon={Wallet} accent="amber" deltaLabel={tr('Not paid yet', 'لم يُدفع بعد')} />
       </div>
 
-      <SectionCard padded={false}>
-        <div className="flex items-center gap-3 p-5">
-          <div className="relative min-w-[240px] flex-1">
-            <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={`${t('action.search')} name, account…`} className="ps-9" />
-          </div>
-        </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {stats.map(({ ib, clients: n, lots, earned, owed }) => {
+          const label = LABELS[ib.classification] ?? { en: ib.classification, ar: ib.classification, tone: 'success' as const };
+          const parent = ibs.find((p) => p.id === ib.parentIBId);
+          return (
+            <div key={ib.id} className={cn('card-elevated flex flex-col p-5', !ib.active && 'opacity-60')}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-[16px] font-bold">{nameOf(ib)}</p>
+                  <p className="text-[12px] text-muted-foreground">MT5 {ib.mt5AccountNo}{parent ? ` · ${tr('under', 'تحت')} ${nameOf(parent)}` : ''}</p>
+                </div>
+                <Badge variant={label.tone}>{tr(label.en, label.ar)}</Badge>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-3 text-[13px]">
+                <div><p className="text-[11px] text-muted-foreground">{tr('Clients', 'الزبائن')}</p><p className="font-semibold">{n}</p></div>
+                <div><p className="text-[11px] text-muted-foreground">{tr('Pay per lot', 'الأجر لكل لوت')}</p><p className="font-semibold">{fmtUSD(ib.commissionRate, 2)}</p></div>
+                <div><p className="text-[11px] text-muted-foreground">{tr('Lots this month', 'لوتات هذا الشهر')}</p><p className="font-semibold">{lots}</p></div>
+                <div><p className="text-[11px] text-muted-foreground">{tr('Earned this month', 'ربح هذا الشهر')}</p><p className="font-semibold text-success">{fmtUSD(earned, 2)}</p></div>
+              </div>
+              <div className="mt-4 flex items-center justify-between rounded-xl bg-muted/50 px-3 py-2">
+                <span className="text-[12px] text-muted-foreground">{tr('You owe them', 'تدين له')}</span>
+                <span className="font-mono text-[15px] font-bold">{fmtUSD(owed, 2)}</span>
+              </div>
+              {ib.notes && <p className="mt-3 text-[12px] italic text-muted-foreground">“{ib.notes}”</p>}
+              <div className="mt-auto flex gap-2 pt-4">
+                <Button size="sm" variant="gradient" className="flex-1" disabled={owed <= 0} onClick={() => setPayFor(ib.treeAccountCode)}>
+                  {tr('Pay', 'ادفع')}
+                </Button>
+                <Button size="sm" variant="outline" className="gap-1" onClick={() => setDialog({ open: true, partner: ib })}>
+                  <Pencil className="h-3.5 w-3.5" />{tr('Edit', 'تعديل')}
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-8" />
-                <TableHead>{t('field.name')}</TableHead>
-                <TableHead className="w-28">MT5 Account</TableHead>
-                <TableHead>{t('clients.classification')}</TableHead>
-                <TableHead className="w-20 text-right">{t('ib.mgmt.commRate')}</TableHead>
-                <TableHead className="w-28 text-right">{t('ib.mgmt.commBalance')}</TableHead>
-                <TableHead className="w-20 text-center">{t('data.col.active')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((ib) => {
-                const commBalance = (ib.totalCommissionEarned ?? 0) - (ib.totalCommissionPaid ?? 0);
-                const linkedClients = clients.filter((c) => c.ibParentId === ib.id);
-                const isExpanded = expanded === ib.id;
-                return (
-                  <>
-                    <TableRow key={ib.id} className={cn(!ib.active && 'opacity-40', 'cursor-pointer hover:bg-accent/30')}
-                      onClick={() => setExpanded(isExpanded ? null : ib.id)}>
-                      <TableCell>
-                        {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="font-semibold">{ib.name}</p>
-                          {ib.notes && <p className="text-xs text-muted-foreground truncate max-w-xs">{ib.notes}</p>}
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-mono text-xs font-semibold text-muted-foreground">{ib.mt5AccountNo}</TableCell>
-                      <TableCell><IBClassBadge cls={ib.classification} lang={lang} /></TableCell>
-                      <TableCell className="text-right tabular-nums text-sm">
-                        {ib.commissionRate != null ? `${ib.commissionRate}%` : '—'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className={cn('font-bold tabular-nums text-sm', commBalance > 0 ? 'text-amber-600' : 'text-success')}>
-                          ${commBalance.toLocaleString()}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <button onClick={(e) => { e.stopPropagation(); setIBActive(ib.id, !ib.active); }}
-                          className={cn('relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors',
-                            ib.active ? 'bg-emerald-500' : 'bg-muted')}
-                          role="switch" aria-checked={ib.active}>
-                          <span className={cn('pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform', ib.active ? 'translate-x-4' : 'translate-x-0')} />
-                        </button>
-                      </TableCell>
-                    </TableRow>
-                    {isExpanded && (
-                      <TableRow key={`${ib.id}-detail`}>
-                        <TableCell colSpan={7} className="bg-muted/30 p-4">
-                          <div className="grid gap-4 sm:grid-cols-3 text-sm">
-                            <div>
-                              <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2">{t('ib.mgmt.traders')} ({linkedClients.length})</p>
-                              {linkedClients.length === 0
-                                ? <p className="text-muted-foreground text-xs">No linked traders</p>
-                                : linkedClients.map((c) => (
-                                  <div key={c.id} className="flex items-center gap-2 py-0.5">
-                                    <span className="font-mono text-xs text-muted-foreground">{c.accountNo}</span>
-                                    <span className="text-xs">{c.name}</span>
-                                  </div>
-                                ))
-                              }
-                            </div>
-                            <div>
-                              <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2">Commission Detail</p>
-                              <div className="space-y-1">
-                                <div className="flex justify-between"><span className="text-xs text-muted-foreground">{t('ib.mgmt.commEarned')}</span><span className="font-mono text-xs">${(ib.totalCommissionEarned ?? 0).toLocaleString()}</span></div>
-                                <div className="flex justify-between"><span className="text-xs text-muted-foreground">{t('ib.mgmt.commPaid')}</span><span className="font-mono text-xs">${(ib.totalCommissionPaid ?? 0).toLocaleString()}</span></div>
-                                <div className="flex justify-between border-t border-border pt-1"><span className="text-xs font-semibold">{t('ib.mgmt.commBalance')}</span><span className={cn('font-mono text-xs font-bold', commBalance > 0 ? 'text-amber-600' : 'text-success')}>${commBalance.toLocaleString()}</span></div>
-                              </div>
-                            </div>
-                            <div>
-                              <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2">Terms</p>
-                              <div className="space-y-1">
-                                <div className="flex justify-between"><span className="text-xs text-muted-foreground">{t('ib.mgmt.commRate')}</span><span className="text-xs">{ib.commissionRate != null ? `${ib.commissionRate}%` : '—'}</span></div>
-                                <div className="flex justify-between"><span className="text-xs text-muted-foreground">{t('ib.mgmt.spreadGrant')}</span><span className="text-xs">{ib.spreadGrant != null ? `${ib.spreadGrant}` : '—'}</span></div>
-                              </div>
-                            </div>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </>
-                );
-              })}
-              {filtered.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">{t('report.noMatch')}</TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </SectionCard>
-
-      <AddIBDialog open={addOpen} onClose={() => setAddOpen(false)} />
+      <PartnerDialog open={dialog.open} partner={dialog.partner} onClose={() => { setDialog({ open: false }); const p = new URLSearchParams(params); p.delete('new'); setParams(p, { replace: true }); }} />
+      <NewRequestDialog open={!!payFor} presetAccount={payFor ?? undefined} presetType="ib_withdrawal" onClose={() => setPayFor(null)} />
     </div>
   );
 }

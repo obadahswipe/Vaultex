@@ -1,192 +1,120 @@
 import { useState } from 'react';
-import { Wallet, Clock, Users, TrendingUp, TrendingDown } from 'lucide-react';
+import { Plus, CreditCard, Bitcoin, Smartphone, ShieldCheck } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { PageHint } from '@/components/shared/PageHint';
 import { SectionCard } from '@/components/shared/SectionCard';
 import { StatCard } from '@/components/shared/StatCard';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { mockWallets, mockWalletTransactions } from '@/mocks/data/wallets.mock';
-import { cn } from '@/lib/utils';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Field, NativeSelect, Toggle, attempt } from '@/components/shared/form';
+import { useBooks } from '@/stores/books.store';
+import { useTranslation } from '@/lib/i18n/useTranslation';
+import { CURRENCIES, type Currency, type Wallet } from '@/lib/data/types';
+
+const KIND: Record<Wallet['kind'], { en: string; ar: string; icon: typeof CreditCard }> = {
+  card:    { en: 'Bank card',       ar: 'بطاقة بنكية',  icon: CreditCard },
+  crypto:  { en: 'Crypto wallet',   ar: 'محفظة رقمية',  icon: Bitcoin },
+  ewallet: { en: 'Online wallet',   ar: 'محفظة إلكترونية', icon: Smartphone },
+};
 
 export default function Wallets() {
-  const [selectedWallet, setSelectedWallet] = useState<string | null>(null);
+  const { tr, nameOf } = useTranslation();
+  const wallets = useBooks((s) => s.wallets);
+  const clients = useBooks((s) => s.clients);
+  const addWallet = useBooks((s) => s.addWallet);
+  const updateWallet = useBooks((s) => s.updateWallet);
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ clientId: '', kind: 'crypto' as Wallet['kind'], provider: '', currency: 'USDT' as Currency, address: '' });
 
-  const totalBalance = mockWallets.reduce((s, w) => s + (w.currency === 'USD' ? w.balance : 0), 0);
-  const totalPending = mockWallets.reduce((s, w) => s + w.pending_balance, 0);
-  const activeCount = mockWallets.filter((w) => w.is_active).length;
-
-  const txs = selectedWallet
-    ? mockWalletTransactions.filter((t) => t.wallet_id === selectedWallet)
-    : mockWalletTransactions;
+  const save = () => {
+    const ok = attempt(() => addWallet({ ...f, address: f.address || undefined, verified: false }), tr('Wallet added', 'تمت إضافة المحفظة'));
+    if (ok) { setOpen(false); setF({ clientId: '', kind: 'crypto', provider: '', currency: 'USDT', address: '' }); }
+  };
 
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Client Wallets"
-        subtitle="Wallet balances, transactions, and funding overview across all clients"
+        title={tr('Client wallets', 'محافظ الزبائن')}
+        subtitle={tr('Cards and wallets your clients use to send and get money.', 'البطاقات والمحافظ التي يستخدمها زبائنك لإرسال المال واستلامه.')}
         hint={
-          <PageHint id="wallets" icon="💳" title="What is this page?">
-            This page shows each client's wallet balance and recent transaction history. Click a
-            wallet on the left to filter transactions for that specific wallet, or view all
-            transactions at once.
+          <PageHint id="wallets-v2" title={tr('Why check wallets?', 'لماذا نتحقق من المحافظ؟')}>
+            {tr('Only send money to a wallet you have checked. It must belong to the same person as the trading account.', 'لا ترسل المال إلا إلى محفظة تحققت منها. يجب أن تكون لنفس صاحب حساب التداول.')}
           </PageHint>
         }
+        actions={<Button variant="gradient" className="gap-1.5" onClick={() => setOpen(true)}><Plus className="h-4 w-4" />{tr('Add a wallet', 'أضف محفظة')}</Button>}
       />
 
-      {/* Gradient hero */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-700 p-6 text-white shadow-lg">
-        <div className="relative z-10">
-          <p className="text-sm font-medium text-white/70">Total Holdings</p>
-          <h2 className="mt-1 text-3xl font-bold tracking-tight tabular-nums">
-            ${totalBalance.toLocaleString()}
-          </h2>
-          <p className="mt-1 text-sm text-white/60">Across all active wallets</p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-sm">
-              <Wallet className="h-3.5 w-3.5" /> Active Wallets: {activeCount}
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-sm">
-              <Clock className="h-3.5 w-3.5" /> Pending: ${totalPending.toLocaleString()}
-            </span>
-          </div>
-        </div>
-        <div aria-hidden className="pointer-events-none absolute -top-10 -right-10 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
-        <div aria-hidden className="pointer-events-none absolute bottom-0 left-1/2 h-32 w-32 rounded-full bg-violet-400/20 blur-2xl" />
-      </div>
-
-      {/* Stat cards */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard
-          label="Total Balance"
-          value={`$${totalBalance.toLocaleString()}`}
-          icon={Wallet}
-          accent="blue"
-        />
-        <StatCard
-          label="Pending Withdrawals"
-          value={`$${totalPending.toLocaleString()}`}
-          icon={Clock}
-          accent="amber"
-        />
-        <StatCard
-          label="Active Wallets"
-          value={activeCount}
-          icon={Users}
-          accent="green"
-        />
+        <StatCard label={tr('Wallets', 'المحافظ')} value={wallets.length} icon={CreditCard} accent="blue" deltaLabel={tr(`For ${new Set(wallets.map((w) => w.clientId)).size} clients`, `لـ ${new Set(wallets.map((w) => w.clientId)).size} زبائن`)} />
+        <StatCard label={tr('Checked', 'تم التحقق')} value={wallets.filter((w) => w.verified).length} icon={ShieldCheck} accent="green" deltaLabel={tr('Safe to send money to', 'آمنة لإرسال المال')} />
+        <StatCard label={tr('Need checking', 'تحتاج تحقق')} value={wallets.filter((w) => !w.verified).length} icon={ShieldCheck} accent="amber" deltaLabel={tr('Check before you pay', 'تحقق قبل الدفع')} />
       </div>
 
-      {/* 2-column layout */}
-      <div className="grid gap-6 grid-cols-5">
-        {/* Wallet list */}
-        <div className="col-span-2 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-1 mb-3">
-            Client Wallets
-          </p>
-          {mockWallets.map((w) => {
-            const isSelected = selectedWallet === w.id;
-            return (
-              <button
-                key={w.id}
-                onClick={() => setSelectedWallet(isSelected ? null : w.id)}
-                className={cn(
-                  'w-full text-left rounded-2xl border p-4 transition-all',
-                  isSelected
-                    ? 'border-primary ring-1 ring-primary/20 bg-primary/5'
-                    : 'border-border bg-card hover:border-border/80 hover:bg-accent/30',
-                )}
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">{w.client_name}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{w.client_code} · {w.currency}</p>
-                  </div>
-                  <div className={cn(
-                    'flex h-8 w-8 items-center justify-center rounded-lg',
-                    isSelected ? 'bg-primary/20' : 'bg-primary/10',
-                  )}>
-                    <Wallet className={cn('h-4 w-4', isSelected ? 'text-primary' : 'text-primary')} />
-                  </div>
-                </div>
-                <div className="mt-3">
-                  <p className="text-xl font-bold tabular-nums text-foreground">
-                    {w.currency} {w.balance.toLocaleString()}
-                  </p>
-                  {w.pending_balance > 0 && (
-                    <p className="mt-1 flex items-center gap-1 text-xs text-warning">
-                      <Clock className="h-3 w-3" />
-                      {w.currency} {w.pending_balance.toLocaleString()} pending
-                    </p>
-                  )}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+      <SectionCard padded={false}>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{tr('Client', 'الزبون')}</TableHead>
+              <TableHead>{tr('Kind', 'النوع')}</TableHead>
+              <TableHead className="hidden sm:table-cell">{tr('Provider', 'المزوّد')}</TableHead>
+              <TableHead>{tr('Currency', 'العملة')}</TableHead>
+              <TableHead className="hidden md:table-cell">{tr('Address', 'العنوان')}</TableHead>
+              <TableHead className="text-end">{tr('Checked', 'تم التحقق')}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {wallets.map((w) => {
+              const k = KIND[w.kind];
+              return (
+                <TableRow key={w.id}>
+                  <TableCell className="font-medium">{nameOf(clients.find((c) => c.id === w.clientId))}</TableCell>
+                  <TableCell><span className="inline-flex items-center gap-1.5 text-[13px]"><k.icon className="h-4 w-4 text-muted-foreground" />{tr(k.en, k.ar)}</span></TableCell>
+                  <TableCell className="hidden sm:table-cell">{w.provider}</TableCell>
+                  <TableCell><Badge variant="outline">{w.currency}</Badge></TableCell>
+                  <TableCell className="hidden font-mono text-[12px] md:table-cell" dir="ltr">{w.address ?? '—'}</TableCell>
+                  <TableCell className="text-end"><Toggle checked={w.verified} onChange={(v) => updateWallet(w.id, { verified: v })} label={tr('Checked', 'تم التحقق')} /></TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </SectionCard>
 
-        {/* Transactions */}
-        <div className="col-span-3">
-          <SectionCard
-            title={selectedWallet ? 'Wallet Transactions' : 'Recent Transactions'}
-            description={selectedWallet
-              ? `Showing transactions for ${mockWallets.find((w) => w.id === selectedWallet)?.client_name}`
-              : 'All recent transactions across wallets'}
-            padded={false}
-          >
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Type</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead className="text-right">Balance After</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Date</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {txs.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
-                        No transactions found
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    txs.map((tx) => {
-                      const isNeg = tx.amount < 0;
-                      const TxIcon = isNeg ? TrendingDown : TrendingUp;
-                      const typeLabel = tx.transaction_type.replace(/_/g, ' ');
-                      return (
-                        <TableRow key={tx.id}>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <TxIcon className={cn('h-4 w-4', isNeg ? 'text-destructive' : 'text-success')} />
-                              <span className="text-xs text-muted-foreground">{typeLabel}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell className={cn(
-                            'text-right font-mono font-semibold tabular-nums text-sm',
-                            isNeg ? 'text-destructive' : 'text-success',
-                          )}>
-                            {isNeg ? '-' : '+'}${Math.abs(tx.amount).toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-sm tabular-nums text-muted-foreground">
-                            ${tx.balance_after.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">{tx.narration}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground tabular-nums">
-                            {new Date(tx.created_at).toLocaleDateString()}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </SectionCard>
-        </div>
-      </div>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{tr('Add a wallet', 'أضف محفظة')}</DialogTitle>
+            <DialogDescription>{tr('Write it exactly as the client gave it to you.', 'اكتبها تمامًا كما أعطاك إياها الزبون.')}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={tr('Client', 'الزبون')} className="sm:col-span-2">
+              <NativeSelect value={f.clientId} onChange={(e) => setF({ ...f, clientId: e.target.value })}>
+                <option value="">{tr('Choose…', 'اختر…')}</option>
+                {clients.filter((c) => c.active).map((c) => <option key={c.id} value={c.id}>{nameOf(c)}</option>)}
+              </NativeSelect>
+            </Field>
+            <Field label={tr('Kind', 'النوع')}>
+              <NativeSelect value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value as Wallet['kind'] })}>
+                {Object.entries(KIND).map(([k, v]) => <option key={k} value={k}>{tr(v.en, v.ar)}</option>)}
+              </NativeSelect>
+            </Field>
+            <Field label={tr('Currency', 'العملة')}>
+              <NativeSelect value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value as Currency })}>
+                {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </NativeSelect>
+            </Field>
+            <Field label={tr('Provider', 'المزوّد')}><Input value={f.provider} onChange={(e) => setF({ ...f, provider: e.target.value })} placeholder="TRC20, Visa, Skrill…" /></Field>
+            <Field label={tr('Address or card end', 'العنوان أو آخر أرقام البطاقة')}><Input value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></Field>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setOpen(false)}>{tr('Cancel', 'إلغاء')}</Button>
+            <Button variant="gradient" disabled={!f.clientId || !f.provider} onClick={save}>{tr('Add', 'أضف')}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,371 +1,343 @@
-import { useMemo, useState } from 'react';
-import { Search, Plus, AlertTriangle, Users, UserX, Eye, EyeOff, FileText, ChevronsUpDown, ChevronUp, ChevronDown, Pencil, Check, X } from 'lucide-react';
-import { useSortable } from '@/hooks/useSortable';
-import { EmptyClients, EmptySearch } from '@/components/shared/EmptyState';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Plus, Search, Users, Wallet, AlertTriangle, FileWarning, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { PageHint } from '@/components/shared/PageHint';
 import { SectionCard } from '@/components/shared/SectionCard';
 import { StatCard } from '@/components/shared/StatCard';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { useClientsStore } from '@/stores/clients.store';
+import { Field, NativeSelect, Segmented, TextArea, Toggle, attempt } from '@/components/shared/form';
+import { NewRequestDialog } from '@/components/operations/NewRequestDialog';
+import { RequestStatusBadge } from '@/components/operations/RequestStatusBadge';
+import { RequestTypeBadge } from '@/components/operations/RequestTypeBadge';
+import { useBooks } from '@/stores/books.store';
+import { useLedger, useReconciliation } from '@/lib/data/hooks';
+import { fmtMoney, fmtShort } from '@/lib/data/money';
+import { lineEffect } from '@/lib/data/ledger';
+import { CLASS_LABEL } from '@/lib/data/labels';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 import { cn } from '@/lib/utils';
-import { useToast } from '@/hooks/use-toast';
-import type { ClientClassification } from '@/lib/workbook';
+import { CURRENCIES, type ClientClassification, type ClientRecord, type Currency, type RequestType } from '@/lib/data/types';
 
-const classConfig: Record<ClientClassification, { labelKey: string; color: string }> = {
-  good:    { labelKey: 'clients.class.good',    color: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' },
-  neutral: { labelKey: 'clients.class.neutral', color: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
-  bad:     { labelKey: 'clients.class.bad',     color: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' },
-  fraud:   { labelKey: 'clients.class.fraud',   color: 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300' },
-};
+type Filter = 'all' | 'good' | 'careful' | 'docs' | 'owe';
 
-function ClassBadge({ cls }: { cls: ClientClassification }) {
-  const { t } = useTranslation();
-  const cfg = classConfig[cls];
-  return (
-    <span className={cn('inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold', cfg.color)}>
-      {t(cfg.labelKey as Parameters<typeof t>[0])}
-    </span>
-  );
+function KycBadge({ status }: { status?: ClientRecord['kycStatus'] }) {
+  const { tr } = useTranslation();
+  if (status === 'approved') return <Badge variant="success">{tr('ID checked', 'تم التحقق')}</Badge>;
+  if (status === 'pending') return <Badge variant="warning">{tr('ID sent, check it', 'أرسل الهوية، راجعها')}</Badge>;
+  return <Badge variant="destructive">{tr('No ID yet', 'لا هوية بعد')}</Badge>;
 }
 
 function AddClientDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { ibs, addClient } = useClientsStore();
-  const { t } = useTranslation();
-  const { toast } = useToast();
-  const [form, setForm] = useState({
-    accountNo: '', name: '', arabic: '', ibParentId: '',
-    classification: 'neutral' as ClientClassification,
-    treeAccountCode: '', notes: '', creditLimit: '',
-    joinDate: new Date().toISOString().slice(0, 10),
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.accountNo || !form.name) return;
-    addClient({
-      accountNo: form.accountNo, name: form.name, arabic: form.arabic || undefined,
-      ibParentId: form.ibParentId || undefined,
-      classification: form.classification,
-      treeAccountCode: form.treeAccountCode || undefined,
-      notes: form.notes || undefined,
-      active: true, joinDate: form.joinDate,
-      creditLimit: form.creditLimit ? Number(form.creditLimit) : undefined,
-    });
-    toast({ title: t('toast.clientAdded') });
-    onClose();
-    setForm({ accountNo: '', name: '', arabic: '', ibParentId: '', classification: 'neutral', treeAccountCode: '', notes: '', creditLimit: '', joinDate: new Date().toISOString().slice(0, 10) });
+  const { tr, nameOf } = useTranslation();
+  const addClient = useBooks((s) => s.addClient);
+  const ibs = useBooks((s) => s.ibs);
+  const [f, setF] = useState({ name: '', arabic: '', email: '', phone: '', country: '', currency: 'USD' as Currency, ib: '', limit: '' });
+  useEffect(() => { if (open) setF({ name: '', arabic: '', email: '', phone: '', country: '', currency: 'USD', ib: '', limit: '' }); }, [open]);
+  const save = () => {
+    if (!f.name.trim()) return;
+    const ok = attempt(() => addClient({
+      name: f.name.trim(), arabic: f.arabic.trim() || undefined, email: f.email || undefined, phone: f.phone || undefined,
+      country: f.country || undefined, currency: f.currency, ibParentId: f.ib || undefined,
+      creditLimit: f.limit ? Number(f.limit) : undefined, classification: 'neutral', active: true,
+      joinDate: new Date().toISOString().slice(0, 10), kycStatus: 'missing',
+    }), tr(`${f.name} was added`, `تمت إضافة ${f.arabic || f.name}`));
+    if (ok) onClose();
   };
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[92vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{tr('Add a client', 'أضف زبونًا')}</DialogTitle>
+          <DialogDescription>{tr('Vaultex makes an account for them in the books, ready to use.', 'فولتكس ينشئ له حسابًا في الدفاتر جاهزًا للاستخدام.')}</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={tr('Name', 'الاسم')}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+          <Field label={tr('Name in Arabic', 'الاسم بالعربية')}><Input dir="rtl" value={f.arabic} onChange={(e) => setF({ ...f, arabic: e.target.value })} /></Field>
+          <Field label={tr('Email', 'البريد الإلكتروني')}><Input type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
+          <Field label={tr('Phone', 'الهاتف')}><Input value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></Field>
+          <Field label={tr('Country', 'البلد')}><Input value={f.country} onChange={(e) => setF({ ...f, country: e.target.value })} /></Field>
+          <Field label={tr('Account currency', 'عملة الحساب')}>
+            <NativeSelect value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value as Currency })}>
+              {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </NativeSelect>
+          </Field>
+          <Field label={tr('Brought by partner', 'أحضره الشريك')}>
+            <NativeSelect value={f.ib} onChange={(e) => setF({ ...f, ib: e.target.value })}>
+              <option value="">{tr('No partner', 'بدون شريك')}</option>
+              {ibs.filter((i) => i.active).map((i) => <option key={i.id} value={i.id}>{nameOf(i)}</option>)}
+            </NativeSelect>
+          </Field>
+          <Field label={tr('Can owe us up to (USD)', 'يمكن أن يدين لنا حتى (دولار)')} help={tr('Leave empty for zero.', 'اتركه فارغًا ليكون صفرًا.')}>
+            <Input type="number" value={f.limit} onChange={(e) => setF({ ...f, limit: e.target.value })} />
+          </Field>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>{tr('Cancel', 'إلغاء')}</Button>
+          <Button variant="gradient" disabled={!f.name.trim()} onClick={save}>{tr('Add client', 'أضف الزبون')}</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ClientDetail({ client, onClose, onRequest }: { client: ClientRecord | null; onClose: () => void; onRequest: (type: RequestType) => void }) {
+  const { tr, nameOf } = useTranslation();
+  const updateClient = useBooks((s) => s.updateClient);
+  const ibs = useBooks((s) => s.ibs);
+  const trades = useBooks((s) => s.trades);
+  const requests = useBooks((s) => s.requests);
+  const { balances, byCode, entries } = useLedger();
+  const recon = useReconciliation();
+  const [edit, setEdit] = useState<{ classification: ClientClassification; limit: string; ib: string; notes: string; kyc: ClientRecord['kycStatus'] }>({ classification: 'neutral', limit: '', ib: '', notes: '', kyc: 'missing' });
+
+  useEffect(() => {
+    if (client) setEdit({ classification: client.classification, limit: client.creditLimit != null ? String(client.creditLimit) : '', ib: client.ibParentId ?? '', notes: client.notes ?? '', kyc: client.kycStatus ?? 'missing' });
+  }, [client]);
+
+  if (!client) return null;
+  const acc = byCode.get(client.accountNo);
+  const bal = balances[client.accountNo] ?? 0;
+  const row = recon.rows.find((r) => r.client.id === client.id);
+  const myTrades = trades.filter((t) => t.clientId === client.id);
+  const open = myTrades.filter((t) => t.status === 'open');
+  const closed = myTrades.filter((t) => t.status === 'closed');
+  const result = closed.reduce((s, t) => s + t.profit, 0);
+  const myRequests = requests.filter((r) => r.lines.some((l) => l.accountNo === client.accountNo)).slice(0, 6);
+  const statement = entries
+    .filter((e) => e.lines.some((l) => l.accountCode === client.accountNo))
+    .slice(-8).reverse()
+    .map((e) => ({ e, change: e.lines.filter((l) => l.accountCode === client.accountNo).reduce((s, l) => s + (acc ? lineEffect(acc, l) : 0), 0) }));
+
+  const save = () => attempt(() => updateClient(client.id, {
+    classification: edit.classification, creditLimit: edit.limit ? Number(edit.limit) : undefined,
+    ibParentId: edit.ib || undefined, notes: edit.notes || undefined, kycStatus: edit.kyc,
+  }), tr('Saved', 'تم الحفظ'));
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+    <Dialog open={!!client} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{t('clients.add')}</DialogTitle>
-          <DialogDescription>{t('clients.subtitle')}</DialogDescription>
+          <DialogTitle>{nameOf(client)}</DialogTitle>
+          <DialogDescription>
+            {client.email ?? ''} {client.country ? `· ${client.country}` : ''} · {tr('MT5 account', 'حساب MT5')} {client.mt5Login}
+          </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-3 pt-2">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium">{t('req.field.accountNo')} *</label>
-              <Input value={form.accountNo} onChange={(e) => setForm((f) => ({ ...f, accountNo: e.target.value }))} placeholder="12166" required />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium">{t('field.name')} *</label>
-              <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Client name" required />
-            </div>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl bg-primary/5 p-3">
+            <p className="text-[11px] text-muted-foreground">{tr('Money with us', 'ماله لدينا')}</p>
+            <p className={cn('font-mono text-lg font-bold', bal < 0 && 'text-destructive')} dir="ltr">{fmtMoney(bal, acc?.currency)}</p>
           </div>
+          <div className="rounded-xl bg-muted/50 p-3">
+            <p className="text-[11px] text-muted-foreground">{tr('MT5 says', 'يقول MT5')}</p>
+            <p className="font-mono text-lg font-bold" dir="ltr">{fmtMoney(row?.mt5 ?? 0, acc?.currency)}</p>
+            {row && row.status !== 'match' && <p className="text-[11px] text-warning">{row.status === 'check' ? tr('Does not match — check', 'غير مطابق — افحص') : tr('Waiting items', 'عناصر تنتظر')}</p>}
+          </div>
+          <div className="rounded-xl bg-muted/50 p-3">
+            <p className="text-[11px] text-muted-foreground">{tr('Trading result', 'نتيجة التداول')}</p>
+            <p className={cn('font-mono text-lg font-bold', result >= 0 ? 'text-success' : 'text-destructive')} dir="ltr">{fmtMoney(result)}</p>
+            <p className="text-[11px] text-muted-foreground">{tr(`${closed.length} closed, ${open.length} open`, `${closed.length} مغلقة، ${open.length} مفتوحة`)}</p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" className="gap-1.5" onClick={() => onRequest('deposit')}><ArrowDownLeft className="h-4 w-4 text-success" />{tr('Add money', 'إضافة مال')}</Button>
+          <Button variant="outline" className="gap-1.5" onClick={() => onRequest('withdrawal')}><ArrowUpRight className="h-4 w-4 text-warning" />{tr('Take out money', 'سحب مال')}</Button>
+        </div>
+
+        <div>
+          <p className="mb-2 text-[13px] font-semibold">{tr('Last changes to their money', 'آخر التغييرات على ماله')}</p>
+          <ul className="divide-y divide-border/40 rounded-xl border border-border/60">
+            {statement.length === 0 && <li className="px-3 py-4 text-center text-[13px] text-muted-foreground">{tr('Nothing yet.', 'لا شيء بعد.')}</li>}
+            {statement.map(({ e, change }) => (
+              <li key={e.id} className="flex items-center justify-between gap-3 px-3 py-2 text-[13px]">
+                <span className="min-w-0"><span className="block truncate">{e.memo}</span><span className="text-[11px] text-muted-foreground">{e.date} · {tr('entry', 'قيد')} {e.no}</span></span>
+                <span className={cn('font-mono font-semibold', change >= 0 ? 'text-success' : 'text-destructive')} dir="ltr">{change >= 0 ? '+' : '−'}{fmtMoney(Math.abs(change), acc?.currency)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {myRequests.length > 0 && (
           <div>
-            <label className="mb-1 block text-xs font-medium">{t('field.nameAr')}</label>
-            <Input dir="rtl" value={form.arabic} onChange={(e) => setForm((f) => ({ ...f, arabic: e.target.value }))} placeholder="اسم العميل" />
+            <p className="mb-2 text-[13px] font-semibold">{tr('Their money requests', 'طلبات المال الخاصة به')}</p>
+            <ul className="divide-y divide-border/40 rounded-xl border border-border/60">
+              {myRequests.map((r) => (
+                <li key={r.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-[13px]">
+                  <span className="font-mono text-[11px] text-muted-foreground">#{r.requestNo}</span>
+                  <RequestTypeBadge type={r.type} />
+                  <span className="font-mono" dir="ltr">{fmtMoney(r.lines[0]?.amount ?? 0, r.lines[0]?.currency)}</span>
+                  <RequestStatusBadge status={r.status} className="ms-auto" />
+                </li>
+              ))}
+            </ul>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium">{t('clients.classification')}</label>
-              <select value={form.classification} onChange={(e) => setForm((f) => ({ ...f, classification: e.target.value as ClientClassification }))}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-                {(Object.keys(classConfig) as ClientClassification[]).map((k) => (
-                  <option key={k} value={k}>{t(classConfig[k].labelKey as Parameters<typeof t>[0])}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium">{t('clients.ibParent')}</label>
-              <select value={form.ibParentId} onChange={(e) => setForm((f) => ({ ...f, ibParentId: e.target.value }))}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-                <option value="">{t('clients.noIB')}</option>
-                {ibs.filter((ib) => ib.active).map((ib) => (
-                  <option key={ib.id} value={ib.id}>{ib.name}</option>
-                ))}
-              </select>
-            </div>
+        )}
+
+        <div className="space-y-4 rounded-xl border border-border/60 p-4">
+          <p className="text-[13px] font-semibold">{tr('Client settings', 'إعدادات الزبون')}</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={tr('Label', 'التصنيف')}>
+              <NativeSelect value={edit.classification} onChange={(e) => setEdit({ ...edit, classification: e.target.value as ClientClassification })}>
+                {(Object.keys(CLASS_LABEL) as ClientClassification[]).map((k) => <option key={k} value={k}>{tr(CLASS_LABEL[k].en, CLASS_LABEL[k].ar)}</option>)}
+              </NativeSelect>
+            </Field>
+            <Field label={tr('ID documents', 'وثائق الهوية')}>
+              <NativeSelect value={edit.kyc} onChange={(e) => setEdit({ ...edit, kyc: e.target.value as ClientRecord['kycStatus'] })}>
+                <option value="approved">{tr('Checked and OK', 'تم التحقق')}</option>
+                <option value="pending">{tr('Sent, needs checking', 'أُرسلت، تحتاج مراجعة')}</option>
+                <option value="missing">{tr('Not sent yet', 'لم تُرسل بعد')}</option>
+              </NativeSelect>
+            </Field>
+            <Field label={tr('Brought by partner', 'أحضره الشريك')}>
+              <NativeSelect value={edit.ib} onChange={(e) => setEdit({ ...edit, ib: e.target.value })}>
+                <option value="">{tr('No partner', 'بدون شريك')}</option>
+                {ibs.map((i) => <option key={i.id} value={i.id}>{nameOf(i)}</option>)}
+              </NativeSelect>
+            </Field>
+            <Field label={tr('Can owe us up to', 'يمكن أن يدين لنا حتى')}>
+              <Input type="number" value={edit.limit} onChange={(e) => setEdit({ ...edit, limit: e.target.value })} placeholder="0" />
+            </Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium">{t('clients.treeAccount')}</label>
-              <Input value={form.treeAccountCode} onChange={(e) => setForm((f) => ({ ...f, treeAccountCode: e.target.value }))} placeholder="Account code" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium">{t('clients.creditLimit')}</label>
-              <Input type="number" value={form.creditLimit} onChange={(e) => setForm((f) => ({ ...f, creditLimit: e.target.value }))} placeholder="0" />
-            </div>
+          <Field label={tr('Notes', 'ملاحظات')}><TextArea value={edit.notes} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} /></Field>
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 text-[13px]">
+              <Toggle checked={client.active} onChange={(v) => updateClient(client.id, { active: v })} />
+              {client.active ? tr('Active', 'نشط') : tr('Turned off', 'متوقف')}
+            </label>
+            <Button variant="gradient" onClick={save}>{tr('Save', 'حفظ')}</Button>
           </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium">{t('field.note')}</label>
-            <Input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Optional notes…" />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="ghost" size="sm" onClick={onClose}>{t('action.cancel')}</Button>
-            <Button type="submit" size="sm" variant="gradient">{t('action.add')}</Button>
-          </div>
-        </form>
+        </div>
       </DialogContent>
     </Dialog>
   );
 }
 
 export default function Clients() {
-  const { t } = useTranslation();
-  const { clients, ibs, setClientActive, updateClient } = useClientsStore();
-  const { toast } = useToast();
+  const { tr, nameOf } = useTranslation();
+  const clients = useBooks((s) => s.clients);
+  const ibs = useBooks((s) => s.ibs);
+  const { balances, byCode, cat } = useLedger();
+  const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState('');
-  const [classFilter, setClassFilter] = useState<ClientClassification | 'ALL'>('ALL');
-  const [showInactive, setShowInactive] = useState(false);
-  const [addOpen, setAddOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<{ name: string; creditLimit: string; classification: ClientClassification }>({
-    name: '',
-    creditLimit: '',
-    classification: 'neutral',
-  });
+  const [filter, setFilter] = useState<Filter>('all');
+  const [addOpen, setAddOpen] = useState(params.get('new') === '1');
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [requestFor, setRequestFor] = useState<{ account: string; type: RequestType } | null>(null);
 
-  const startEdit = (c: typeof clients[number]) => {
-    setEditingId(c.id);
-    setEditForm({
-      name: c.name,
-      creditLimit: c.creditLimit != null ? String(c.creditLimit) : '',
-      classification: c.classification,
-    });
-  };
+  useEffect(() => {
+    const acc = params.get('account');
+    if (acc) { const c = clients.find((x) => x.accountNo === acc); if (c) setOpenId(c.id); }
+    if (params.get('new') === '1') setAddOpen(true);
+  }, [params, clients]);
 
-  const cancelEdit = () => setEditingId(null);
-
-  const saveEdit = (id: string) => {
-    updateClient(id, {
-      name: editForm.name,
-      creditLimit: editForm.creditLimit !== '' ? Number(editForm.creditLimit) : undefined,
-      classification: editForm.classification,
-    });
-    toast({ title: t('toast.clientAdded') });
-    setEditingId(null);
-  };
+  const active = clients.filter((c) => c.active);
+  const owe = active.filter((c) => (balances[c.accountNo] ?? 0) < 0);
+  const docs = active.filter((c) => c.kycStatus !== 'approved');
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return clients.filter((c) => {
-      if (!showInactive && !c.active) return false;
-      if (classFilter !== 'ALL' && c.classification !== classFilter) return false;
+      if (filter === 'good' && c.classification !== 'good') return false;
+      if (filter === 'careful' && c.classification !== 'bad' && c.classification !== 'fraud') return false;
+      if (filter === 'docs' && c.kycStatus === 'approved') return false;
+      if (filter === 'owe' && (balances[c.accountNo] ?? 0) >= 0) return false;
       if (!q) return true;
-      return c.accountNo.toLowerCase().includes(q) || c.name.toLowerCase().includes(q) || c.arabic?.includes(q);
-    });
-  }, [clients, search, classFilter, showInactive]);
+      return [c.name, c.arabic, c.accountNo, c.email, c.mt5Login, c.country].some((v) => v?.toLowerCase().includes(q));
+    }).sort((a, b) => Number(b.active) - Number(a.active) || (balances[b.accountNo] ?? 0) - (balances[a.accountNo] ?? 0));
+  }, [clients, filter, search, balances]);
 
-  const { sorted: sortedClients, sortKey, sortDir, toggle } = useSortable(
-    filtered as unknown as Record<string, unknown>[],
-    'name',
-  );
-
-  function SortHead({ label, field, className }: { label: string; field: string; className?: string }) {
-    const active = sortKey === field;
-    return (
-      <TableHead
-        className={cn('cursor-pointer select-none hover:bg-muted/30 transition-colors', className)}
-        onClick={() => toggle(field as never)}
-      >
-        <span className="inline-flex items-center gap-1">
-          {label}
-          {active
-            ? sortDir === 'asc'
-              ? <ChevronUp className="h-3 w-3 text-primary" />
-              : <ChevronDown className="h-3 w-3 text-primary" />
-            : <ChevronsUpDown className="h-3 w-3 text-muted-foreground/40" />}
-        </span>
-      </TableHead>
-    );
-  }
-
-  const activeClients = clients.filter((c) => c.active);
-  const flagged = activeClients.filter((c) => c.classification === 'fraud' || c.classification === 'bad');
-  const withoutIB = activeClients.filter((c) => !c.ibParentId);
-  const ibName = (id?: string) => ibs.find((ib) => ib.id === id)?.name ?? '—';
+  const openClient = clients.find((c) => c.id === openId) ?? null;
+  const closeDetail = () => { setOpenId(null); const p = new URLSearchParams(params); p.delete('account'); setParams(p, { replace: true }); };
 
   return (
     <div className="space-y-8">
       <PageHeader
-        title={t('clients.title')}
-        subtitle={t('clients.subtitle2')}
+        title={tr('Clients', 'الزبائن')}
+        subtitle={tr('Everyone who trades with you, and how much money they keep with you.', 'كل من يتداول معك، وكم يحفظ لديك من المال.')}
         hint={
-          <PageHint id="clients" title={t('hint.clients.title')}>
-            {t('hint.clients.body')}
+          <PageHint id="clients-v2" title={tr('What is on this page?', 'ماذا في هذه الصفحة؟')}>
+            {tr('Click a client to see their money, trades and history. Use "Add money" or "Take out money" to start a money request for them.', 'اضغط على زبون لترى ماله وصفقاته وسجله. استخدم "إضافة مال" أو "سحب مال" لبدء طلب مال له.')}
           </PageHint>
         }
-        actions={
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setShowInactive((v) => !v)} className={cn('gap-1.5 text-xs', showInactive && 'text-primary')}>
-              {showInactive ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-              {t('clients.showInactive')}
-            </Button>
-            <Button variant="gradient" size="sm" className="gap-1.5" onClick={() => setAddOpen(true)}>
-              <Plus className="h-3.5 w-3.5" /> {t('clients.add')}
-            </Button>
-          </div>
-        }
+        actions={<Button variant="gradient" className="gap-1.5" onClick={() => setAddOpen(true)}><Plus className="h-4 w-4" />{tr('Add a client', 'أضف زبونًا')}</Button>}
       />
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard label={t('ops.clients')} value={activeClients.length} icon={Users} accent="blue" />
-        <StatCard label={t('clients.flagged')} value={flagged.length} icon={AlertTriangle} accent="pink" />
-        <StatCard label={t('clients.withoutIB')} value={withoutIB.length} icon={UserX} accent="amber" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label={tr('Active clients', 'الزبائن النشطون')} value={active.length} icon={Users} accent="blue" deltaLabel={tr(`${clients.length - active.length} turned off`, `${clients.length - active.length} متوقف`)} />
+        <StatCard label={tr('Their money with you', 'أموالهم لديك')} value={fmtShort(cat.clients)} icon={Wallet} accent="violet" deltaLabel={tr('You must give this back when they ask', 'يجب أن تعيده عندما يطلبونه')} />
+        <StatCard label={tr('Owe you money', 'مدينون لك')} value={owe.length} icon={AlertTriangle} accent="pink" deltaLabel={tr('Balance is below zero', 'الرصيد أقل من صفر')} onClick={() => setFilter('owe')} />
+        <StatCard label={tr('Need ID check', 'تحتاج تحقق الهوية')} value={docs.length} icon={FileWarning} accent="amber" deltaLabel={tr('Check their documents', 'راجع وثائقهم')} onClick={() => setFilter('docs')} />
       </div>
 
       <SectionCard padded={false}>
         <div className="flex flex-wrap items-center gap-3 p-5">
-          <div className="relative min-w-[240px] flex-1">
+          <div className="relative min-w-[220px] flex-1">
             <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={`${t('action.search')} name, account…`} className="ps-9" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={tr('Search by name, email or MT5 number…', 'ابحث بالاسم أو البريد أو رقم MT5…')} className="ps-9" />
           </div>
-          <div className="flex gap-1 rounded-xl border border-border/60 bg-card p-1">
-            {(['ALL', 'good', 'neutral', 'bad', 'fraud'] as const).map((k) => (
-              <button key={k} onClick={() => setClassFilter(k)}
-                className={cn('rounded-lg px-2.5 py-1 text-xs font-medium transition-colors',
-                  classFilter === k ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent/60')}>
-                {k === 'ALL' ? t('action.all') : t(classConfig[k].labelKey as Parameters<typeof t>[0])}
-              </button>
-            ))}
-          </div>
+          <Segmented<Filter>
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { value: 'all', label: tr('All', 'الكل') },
+              { value: 'good', label: tr('Good', 'جيد') },
+              { value: 'careful', label: tr('Be careful', 'انتبه') },
+              { value: 'docs', label: tr('Need ID', 'تحتاج هوية'), count: docs.length },
+              { value: 'owe', label: tr('Owe us', 'مدينون'), count: owe.length },
+            ]}
+          />
         </div>
-
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <SortHead label={t('req.field.accountNo')} field="accountNo" className="w-28" />
-                <SortHead label={t('field.name')}          field="name" />
-                <TableHead>{t('clients.ibParent')}</TableHead>
-                <SortHead label={t('clients.classification')} field="classification" />
-                <SortHead label={t('clients.creditLimit')} field="creditLimit" className="w-24 text-right" />
-                <TableHead className="w-24 text-center">{t('data.col.active')}</TableHead>
-                <TableHead className="w-10" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(sortedClients as unknown as typeof filtered).map((c) => {
-                const isEditing = editingId === c.id;
-                return (
-                  <TableRow key={c.id} className={cn(!c.active && 'opacity-40', isEditing && 'bg-muted/30')}>
-                    <TableCell className="font-mono text-xs font-semibold text-muted-foreground">{c.accountNo}</TableCell>
-                    <TableCell>
-                      {isEditing ? (
-                        <Input
-                          value={editForm.name}
-                          onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
-                          className="h-7 text-sm"
-                        />
-                      ) : (
-                        <div>
-                          <p className="font-medium">{c.name}</p>
-                          {c.arabic && <p className="text-xs text-muted-foreground" dir="rtl">{c.arabic}</p>}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {c.ibParentId
-                        ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{ibName(c.ibParentId)}</span>
-                        : <span className="text-xs text-muted-foreground">—</span>}
-                    </TableCell>
-                    <TableCell>
-                      {isEditing ? (
-                        <select
-                          value={editForm.classification}
-                          onChange={(e) => setEditForm((f) => ({ ...f, classification: e.target.value as ClientClassification }))}
-                          className="rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                        >
-                          {(Object.keys(classConfig) as ClientClassification[]).map((k) => (
-                            <option key={k} value={k}>{t(classConfig[k].labelKey as Parameters<typeof t>[0])}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <ClassBadge cls={c.classification} />
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">
-                      {isEditing ? (
-                        <Input
-                          type="number"
-                          value={editForm.creditLimit}
-                          onChange={(e) => setEditForm((f) => ({ ...f, creditLimit: e.target.value }))}
-                          className="h-7 text-sm w-24 text-right ml-auto"
-                          placeholder="0"
-                        />
-                      ) : (
-                        c.creditLimit != null ? `$${c.creditLimit.toLocaleString()}` : '—'
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <button
-                        onClick={() => setClientActive(c.id, !c.active)}
-                        className={cn('relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors',
-                          c.active ? 'bg-success dark:bg-green-500' : 'bg-muted')}
-                        role="switch" aria-checked={c.active}>
-                        <span className={cn('pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform', c.active ? 'translate-x-4' : 'translate-x-0')} />
-                      </button>
-                    </TableCell>
-                    <TableCell>
-                      {isEditing ? (
-                        <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="icon" className="h-6 w-6 text-success" onClick={() => saveEdit(c.id)}>
-                            <Check className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" onClick={cancelEdit}>
-                            <X className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => startEdit(c)}>
-                            <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                          </Button>
-                          {c.notes && (
-                            <Button variant="ghost" size="icon" className="h-6 w-6" title={c.notes}>
-                              <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                            </Button>
-                          )}
-                        </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-              {filtered.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="p-0">
-                    {search.trim()
-                      ? <EmptySearch query={search} />
-                      : <EmptyClients onAdd={() => setAddOpen(true)} />
-                    }
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{tr('Client', 'الزبون')}</TableHead>
+              <TableHead className="hidden lg:table-cell">{tr('Partner', 'الشريك')}</TableHead>
+              <TableHead className="hidden md:table-cell">{tr('ID', 'الهوية')}</TableHead>
+              <TableHead className="hidden sm:table-cell">{tr('Label', 'التصنيف')}</TableHead>
+              <TableHead className="text-end">{tr('Money with us', 'ماله لدينا')}</TableHead>
+              <TableHead className="hidden text-end xl:table-cell">{tr('Quick', 'سريع')}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.map((c) => {
+              const bal = balances[c.accountNo] ?? 0;
+              const acc = byCode.get(c.accountNo);
+              const cl = CLASS_LABEL[c.classification];
+              return (
+                <TableRow key={c.id} className={cn('cursor-pointer', !c.active && 'opacity-50')} onClick={() => setOpenId(c.id)}>
+                  <TableCell>
+                    <p className="font-medium">{nameOf(c)}</p>
+                    <p className="text-[11px] text-muted-foreground">MT5 {c.mt5Login} · {c.country}</p>
+                  </TableCell>
+                  <TableCell className="hidden lg:table-cell">
+                    {c.ibParentId ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{nameOf(ibs.find((i) => i.id === c.ibParentId))}</span> : <span className="text-xs text-muted-foreground">—</span>}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell"><KycBadge status={c.kycStatus} /></TableCell>
+                  <TableCell className="hidden sm:table-cell"><Badge variant={cl.tone}>{tr(cl.en, cl.ar)}</Badge></TableCell>
+                  <TableCell className={cn('text-end font-mono text-sm font-semibold', bal < 0 && 'text-destructive')} dir="ltr">{fmtMoney(bal, acc?.currency)}</TableCell>
+                  <TableCell className="hidden text-end xl:table-cell" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex justify-end gap-1">
+                      <Button size="xs" variant="outline" onClick={() => setRequestFor({ account: c.accountNo, type: 'deposit' })}>{tr('Add', 'إضافة')}</Button>
+                      <Button size="xs" variant="outline" onClick={() => setRequestFor({ account: c.accountNo, type: 'withdrawal' })}>{tr('Take out', 'سحب')}</Button>
+                    </div>
                   </TableCell>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
+              );
+            })}
+          </TableBody>
+        </Table>
+        {filtered.length === 0 && <p className="px-6 py-12 text-center text-[13px] text-muted-foreground">{tr('No client matches. Try another word.', 'لا يوجد زبون مطابق. جرّب كلمة أخرى.')}</p>}
       </SectionCard>
 
-      <AddClientDialog open={addOpen} onClose={() => setAddOpen(false)} />
+      <AddClientDialog open={addOpen} onClose={() => { setAddOpen(false); const p = new URLSearchParams(params); p.delete('new'); setParams(p, { replace: true }); }} />
+      <ClientDetail client={openClient} onClose={closeDetail} onRequest={(type) => { if (openClient) { setRequestFor({ account: openClient.accountNo, type }); closeDetail(); } }} />
+      <NewRequestDialog open={!!requestFor} presetAccount={requestFor?.account} presetType={requestFor?.type} onClose={() => setRequestFor(null)} />
     </div>
   );
 }

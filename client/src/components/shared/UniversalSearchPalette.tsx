@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Database, Users, GitBranch, Inbox, FileText, X } from 'lucide-react';
+import { Search, Database, Users, GitBranch, Inbox, FileText, X, LayoutGrid } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUniversalSearch, type SearchResultType } from '@/hooks/useUniversalSearch';
 import { useTranslation } from '@/lib/i18n/useTranslation';
 
 const TYPE_ICONS: Record<SearchResultType, typeof Search> = {
+  page: LayoutGrid,
   account: Database,
   client: Users,
   ib: GitBranch,
@@ -14,6 +15,7 @@ const TYPE_ICONS: Record<SearchResultType, typeof Search> = {
 };
 
 const TYPE_COLORS: Record<SearchResultType, string> = {
+  page: 'text-primary',
   account: 'text-sky-500',
   client: 'text-emerald-500',
   ib: 'text-violet-500',
@@ -31,7 +33,7 @@ export function UniversalSearchPalette({ open, onClose }: UniversalSearchPalette
   const [selected, setSelected] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { tr } = useTranslation();
   const results = useUniversalSearch(query);
 
   useEffect(() => {
@@ -71,7 +73,7 @@ export function UniversalSearchPalette({ open, onClose }: UniversalSearchPalette
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKey}
-            placeholder={t('nav.search.placeholder')}
+            placeholder={tr('Find a client, account or page…', 'ابحث عن زبون أو حساب أو صفحة…')}
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
           {query && (
@@ -87,18 +89,18 @@ export function UniversalSearchPalette({ open, onClose }: UniversalSearchPalette
         {/* Results */}
         <div className="max-h-80 overflow-y-auto py-2">
           {results.length === 0 && query.length >= 2 && (
-            <div className="py-8 text-center text-sm text-muted-foreground">{t('report.noMatch')}</div>
+            <div className="py-8 text-center text-sm text-muted-foreground">{tr('Nothing found. Try another word.', 'لم نجد شيئًا. جرّب كلمة أخرى.')}</div>
           )}
           {results.length === 0 && query.length < 2 && (
             <div className="py-6 px-4 text-sm text-muted-foreground">
-              <p className="font-medium mb-2">Quick navigation</p>
+              <p className="font-medium mb-2">{tr('Go to', 'اذهب إلى')}</p>
               <div className="flex flex-wrap gap-1.5">
                 {[
-                  { label: 'Operations', href: '/operations' },
-                  { label: 'Clients', href: '/clients' },
-                  { label: 'Reconciliation', href: '/reconciliation' },
-                  { label: 'Treasury', href: '/treasury' },
-                  { label: 'Analytics', href: '/ops-analytics' },
+                  { label: tr('Money requests', 'طلبات المال'), href: '/operations' },
+                  { label: tr('Clients', 'الزبائن'), href: '/clients' },
+                  { label: tr('Banks and cash', 'البنوك والصناديق'), href: '/treasury' },
+                  { label: tr('Profit and reports', 'الأرباح والتقارير'), href: '/reports' },
+                  { label: tr('Close the day', 'إغلاق اليوم'), href: '/eod' },
                 ].map((s) => (
                   <button
                     key={s.href}
@@ -118,7 +120,7 @@ export function UniversalSearchPalette({ open, onClose }: UniversalSearchPalette
                 key={r.id}
                 onClick={() => handleSelect(r.href)}
                 className={cn(
-                  'flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors',
+                  'flex w-full items-center gap-3 px-4 py-2.5 text-start transition-colors',
                   i === selected ? 'bg-accent/60' : 'hover:bg-accent/40',
                 )}
               >
@@ -139,9 +141,9 @@ export function UniversalSearchPalette({ open, onClose }: UniversalSearchPalette
 
         {results.length > 0 && (
           <div className="border-t border-border/60 px-4 py-2 text-[10px] text-muted-foreground flex gap-3">
-            <span>↑↓ navigate</span>
-            <span>↵ select</span>
-            <span>ESC close</span>
+            <span>↑↓ {tr('move', 'تنقّل')}</span>
+            <span>↵ {tr('open', 'فتح')}</span>
+            <span>ESC {tr('close', 'إغلاق')}</span>
           </div>
         )}
       </div>

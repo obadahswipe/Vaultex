@@ -1,198 +1,109 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { PageLoader } from '@/components/shared/LoadingSpinner';
-import { SectionCard } from '@/components/shared/SectionCard';
+import { useMemo, useState } from 'react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { HandCoins, Wallet, Users, BarChart3, Link2, Copy, Check } from 'lucide-react';
 import { StatCard } from '@/components/shared/StatCard';
+import { SectionCard } from '@/components/shared/SectionCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { getIBDashboard } from '@/api/ib.api';
-import { fmt } from '@/lib/utils';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Field, NativeSelect, attempt } from '@/components/shared/form';
+import { PostingError } from '@/lib/data/ledger';
+import { useBooks } from '@/stores/books.store';
+import { fmtUSD } from '@/lib/data/money';
 import { useTranslation } from '@/lib/i18n/useTranslation';
-import { useToast } from '@/hooks/use-toast';
-import { DollarSign, Clock, TrendingUp, Users } from 'lucide-react';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-} from 'recharts';
+import { useMyIB } from './useMyIB';
 
 export default function IBDashboard() {
-  const { t } = useTranslation();
-  const { toast } = useToast();
-  const { data, isLoading } = useQuery({ queryKey: ['ib-dashboard'], queryFn: getIBDashboard });
+  const { tr, nameOf } = useTranslation();
+  const me = useMyIB();
+  const allGateways = useBooks((s) => s.gateways);
+  const gateways = useMemo(() => allGateways.filter((g) => g.enabled), [allGateways]);
+  const addRequest = useBooks((s) => s.addRequest);
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState('');
+  const [via, setVia] = useState(gateways[0]?.id ?? '');
+  const [copied, setCopied] = useState(false);
+  if (!me) return null;
+  const canGet = Math.max(0, me.owed - me.waitingPay);
+  const link = `https://vaultex.app/join?partner=${me.ib.mt5AccountNo}`;
 
-  const [payoutAmount, setPayoutAmount] = useState('');
-  const [payoutMethod, setPayoutMethod] = useState<'Bank Transfer' | 'Crypto' | 'Internal'>('Bank Transfer');
-  const [payoutNote, setPayoutNote] = useState('');
-  const [payoutError, setPayoutError] = useState('');
-
-  if (isLoading) return <PageLoader />;
-
-  const m = data?.metrics;
-  const pendingCommission = m?.pending_commission ?? 0;
-
-  const handlePayoutSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const amount = Number(payoutAmount);
-    if (!payoutAmount || isNaN(amount) || amount <= 0) {
-      setPayoutError(t('ib.payout.errorInvalid'));
-      return;
-    }
-    if (amount > pendingCommission) {
-      setPayoutError(t('ib.payout.errorExceed'));
-      return;
-    }
-    setPayoutError('');
-    toast({ title: t('ib.payout.toast') });
-    setPayoutAmount('');
-    setPayoutNote('');
+  const ask = () => {
+    const amt = Number(amount);
+    const gw = gateways.find((g) => g.id === via);
+    const ok = attempt(() => {
+      if (!gw) throw new PostingError('Pick how you want to get paid.', 'اختر كيف تريد استلام أجرك.');
+      if (amt > canGet) throw new PostingError('That is more than you can get right now.', 'هذا أكثر مما يمكنك استلامه الآن.');
+      addRequest({
+        type: 'ib_withdrawal', date: new Date().toISOString().slice(0, 10), priority: 'normal', source: 'ib_portal', createdBy: 'ib portal', note: gw.name,
+        lines: [{ id: `ln-${Date.now()}`, accountNo: me.ib.treeAccountCode, accountName: `Partner: ${me.ib.name}`, amount: amt, currency: 'USD', counterAccountCode: gw.accountCode }],
+      });
+    }, tr('Request sent. We will pay you soon.', 'أُرسل الطلب. سندفع لك قريبًا.'));
+    if (ok) { setOpen(false); setAmount(''); }
   };
 
   return (
-    <div className="space-y-8 animate-slide-up">
-      <div>
-        <h1 className="text-[1.75rem] font-bold tracking-tight sm:text-3xl">{t('ib.dashboard.title')}</h1>
-        <p className="text-muted-foreground text-sm mt-0.5">{t('ib.dashboard.subtitle')}</p>
+    <div className="space-y-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-[1.75rem] font-bold tracking-tight">{tr(`Hello, ${me.ib.name}`, `مرحبًا يا ${nameOf(me.ib)}`)}</h1>
+          <p className="mt-1 text-[14px] text-muted-foreground">{tr(`You earn ${fmtUSD(me.ib.commissionRate, 2)} for every lot your clients trade.`, `تربح ${fmtUSD(me.ib.commissionRate, 2)} عن كل لوت يتداوله زبائنك.`)}</p>
+        </div>
+        <Button variant="gradient" className="gap-1.5" disabled={canGet <= 0} onClick={() => setOpen(true)}><Wallet className="h-4 w-4" />{tr('Ask to get paid', 'اطلب أجرك')}</Button>
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label={t('ib.totalCommission')}  value={`$${fmt(m?.total_commission ?? 0)}`}       icon={DollarSign} accent="amber" />
-        <StatCard label={t('ib.pendingCommission')} value={`$${fmt(m?.pending_commission ?? 0)}`}     icon={Clock}      accent="amber" />
-        <StatCard label={t('ib.totalClients')}      value={String(m?.total_clients ?? 0)}              icon={Users}      accent="blue" />
-        <StatCard label={t('ib.activeClients')}     value={String(m?.active_clients_month ?? 0)}       icon={TrendingUp} accent="green" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label={tr('Earned this month', 'ربحت هذا الشهر')} value={fmtUSD(me.earnedMonth, 2)} icon={HandCoins} accent="green" deltaLabel={tr('Added every day', 'يُضاف كل يوم')} />
+        <StatCard label={tr('You can get now', 'يمكنك استلامه الآن')} value={fmtUSD(canGet, 2)} icon={Wallet} accent="amber" deltaLabel={me.waitingPay ? tr(`${fmtUSD(me.waitingPay)} is on the way`, `${fmtUSD(me.waitingPay)} في الطريق`) : tr('Ready to pay out', 'جاهز للدفع')} />
+        <StatCard label={tr('My clients', 'زبائني')} value={me.clients.length} icon={Users} accent="violet" deltaLabel={tr('People you brought', 'أشخاص أحضرتهم')} />
+        <StatCard label={tr('Lots this month', 'لوتات هذا الشهر')} value={me.lotsMonth} icon={BarChart3} accent="blue" deltaLabel={tr('Traded by your clients', 'تداولها زبائنك')} />
       </div>
 
-      {/* Chart + Top clients */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        <SectionCard title={t('ib.commissionLast7d')} className="lg:col-span-3">
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={data?.daily_stats ?? []} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-              <XAxis dataKey="day" tick={{ fontSize: 12 }} className="text-muted-foreground" />
-              <YAxis tick={{ fontSize: 12 }} className="text-muted-foreground" />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '12px',
-                  boxShadow: 'var(--shadow-shadow-3)',
-                  color: 'hsl(var(--foreground))',
-                }}
-                formatter={(v) => `$${fmt(Number(v ?? 0))}`}
-              />
-              <Bar dataKey="amount" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </SectionCard>
-
-        <SectionCard title={t('ib.topClientsByVolume')} className="lg:col-span-2">
-          <div className="space-y-3">
-            {(data?.top_clients ?? []).map((c, i) => (
-              <div key={c.id} className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-xs font-bold text-muted-foreground w-4 shrink-0">{i + 1}</span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{c.full_name}</p>
-                    <p className="text-xs text-muted-foreground font-mono">{c.client_code}</p>
-                  </div>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-sm font-semibold">{c.total_volume} {t('ib.lots')}</p>
-                  <p className="text-xs text-amber-600 dark:text-amber-400">${fmt(c.commission_generated)}</p>
-                </div>
-              </div>
-            ))}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <SectionCard className="lg:col-span-2" title={tr('My pay — last 14 days', 'أجري — آخر 14 يومًا')}>
+          <div className="h-56" dir="ltr">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={me.daily}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="day" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} width={40} />
+                <Tooltip formatter={(v) => fmtUSD(Number(v), 2)} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 12, fontSize: 12 }} />
+                <Bar dataKey="pay" name={tr('Pay', 'الأجر')} fill="#f59e0b" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </SectionCard>
-      </div>
-
-      {/* Sub-IBs */}
-      {(data?.sub_ibs ?? []).length > 0 && (
-        <SectionCard title={t('ib.subIbs')}>
-          <div className="space-y-3">
-            {(data?.sub_ibs ?? []).map((ib) => (
-              <div key={ib.id} className="flex items-center justify-between rounded-xl border border-border/40 bg-muted/30 p-4 transition-colors hover:bg-accent/30">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/15 shrink-0">
-                    <span className="text-xs font-bold text-amber-600 dark:text-amber-400">{ib.level_label}</span>
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold">{ib.full_name}</p>
-                    <p className="text-xs text-muted-foreground font-mono">{ib.ib_code} · {ib.clients} {t('ib.clients')}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold">{ib.total_volume} {t('ib.lots')}</p>
-                  <p className="text-xs text-amber-600 dark:text-amber-400">${fmt(ib.total_commission)}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </SectionCard>
-      )}
-
-      {/* Commission Payout Request */}
-      <SectionCard
-        title={t('ib.payout.title')}
-        description={`${t('ib.payout.desc')} $${fmt(pendingCommission)}`}
-      >
-        <form onSubmit={handlePayoutSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1 block text-xs font-medium">{t('ib.payout.amount')} *</label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                max={pendingCommission}
-                placeholder="0.00"
-                value={payoutAmount}
-                onChange={(e) => setPayoutAmount(e.target.value)}
-                disabled={pendingCommission <= 0}
-                required
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium">{t('ib.payout.method')} *</label>
-              <select
-                value={payoutMethod}
-                onChange={(e) => setPayoutMethod(e.target.value as typeof payoutMethod)}
-                disabled={pendingCommission <= 0}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <option value="Bank Transfer">{t('ib.payout.method.bank')}</option>
-                <option value="Crypto">{t('ib.payout.method.crypto')}</option>
-                <option value="Internal">{t('ib.payout.method.internal')}</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium">{t('ib.payout.note')}</label>
-            <textarea
-              value={payoutNote}
-              onChange={(e) => setPayoutNote(e.target.value)}
-              placeholder={t('ib.payout.notePlaceholder')}
-              disabled={pendingCommission <= 0}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none disabled:opacity-50 disabled:cursor-not-allowed"
-              rows={2}
-            />
-          </div>
-          {payoutError && <p className="text-xs text-destructive">{payoutError}</p>}
-          {pendingCommission <= 0 && (
-            <p className="text-xs text-muted-foreground">{t('ib.payout.noPending')}</p>
-          )}
-          <div className="flex justify-end">
-            <Button
-              type="submit"
-              variant="default"
-              disabled={pendingCommission <= 0}
-              className="gap-2 bg-amber-500 hover:bg-amber-600 text-white"
-            >
-              <DollarSign className="h-4 w-4" />
-              {t('ib.payout.submit')}
+        <SectionCard title={tr('Bring more clients', 'أحضر زبائن أكثر')}>
+          <p className="text-[13px] text-muted-foreground">{tr('Share this link. Anyone who joins with it becomes your client.', 'شارك هذا الرابط. كل من ينضم من خلاله يصبح زبونك.')}</p>
+          <div className="mt-3 flex items-center gap-2 rounded-xl border border-border/60 bg-muted/40 p-2">
+            <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate font-mono text-[12px]" dir="ltr">{link}</span>
+            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => navigator.clipboard?.writeText(link).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); })}>
+              {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
             </Button>
           </div>
-        </form>
-      </SectionCard>
+        </SectionCard>
+      </div>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{tr('Ask to get paid', 'اطلب أجرك')}</DialogTitle>
+            <DialogDescription>{tr(`You can get up to ${fmtUSD(canGet, 2)}.`, `يمكنك استلام حتى ${fmtUSD(canGet, 2)}.`)}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Field label={tr('How much (USD)?', 'كم (دولار)؟')}><Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={String(Math.floor(canGet))} /></Field>
+            <Field label={tr('How do you want to get it?', 'كيف تريد استلامه؟')}>
+              <NativeSelect value={via} onChange={(e) => setVia(e.target.value)}>
+                {gateways.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </NativeSelect>
+            </Field>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setOpen(false)}>{tr('Cancel', 'إلغاء')}</Button>
+            <Button variant="gradient" disabled={!(Number(amount) > 0)} onClick={ask}>{tr('Send request', 'أرسل الطلب')}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

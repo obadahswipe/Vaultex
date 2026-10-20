@@ -4,27 +4,22 @@ import { useTranslation } from '@/lib/i18n/useTranslation';
 
 interface Shortcut {
   keys: string[];
-  descriptionKey: string;
-  categoryKey: string;
+  en: string;
+  ar: string;
+  group: 'go' | 'all';
 }
 
 const SHORTCUTS: Shortcut[] = [
-  // Navigation
-  { keys: ['G', 'D'], descriptionKey: 'keyboard.shortcut.dashboard',   categoryKey: 'keyboard.navigation' },
-  { keys: ['G', 'O'], descriptionKey: 'keyboard.shortcut.operations',  categoryKey: 'keyboard.navigation' },
-  { keys: ['G', 'C'], descriptionKey: 'keyboard.shortcut.clients',     categoryKey: 'keyboard.navigation' },
-  { keys: ['G', 'R'], descriptionKey: 'keyboard.shortcut.reports',     categoryKey: 'keyboard.navigation' },
-  { keys: ['G', 'T'], descriptionKey: 'keyboard.shortcut.trades',      categoryKey: 'keyboard.navigation' },
-  { keys: ['G', 'J'], descriptionKey: 'keyboard.shortcut.journals',    categoryKey: 'keyboard.navigation' },
-  // Global
-  { keys: ['⌘', 'K'], descriptionKey: 'keyboard.shortcut.search',      categoryKey: 'keyboard.global' },
-  { keys: ['?'],       descriptionKey: 'keyboard.shortcut.shortcuts',   categoryKey: 'keyboard.global' },
-  { keys: ['Esc'],     descriptionKey: 'keyboard.shortcut.close',       categoryKey: 'keyboard.global' },
-  { keys: ['⌘', 'D'],  descriptionKey: 'keyboard.shortcut.darkMode',    categoryKey: 'keyboard.global' },
-  // Operations
-  { keys: ['N'],       descriptionKey: 'keyboard.shortcut.newOp',       categoryKey: 'keyboard.ops' },
-  { keys: ['A'],       descriptionKey: 'keyboard.shortcut.approve',     categoryKey: 'keyboard.ops' },
-  { keys: ['R'],       descriptionKey: 'keyboard.shortcut.reject',      categoryKey: 'keyboard.ops' },
+  { keys: ['G', 'H'], en: 'Go to Home',             ar: 'اذهب إلى الرئيسية',      group: 'go' },
+  { keys: ['G', 'O'], en: 'Go to Money requests',   ar: 'اذهب إلى طلبات المال',   group: 'go' },
+  { keys: ['G', 'C'], en: 'Go to Clients',          ar: 'اذهب إلى الزبائن',       group: 'go' },
+  { keys: ['G', 'B'], en: 'Go to Banks and cash',   ar: 'اذهب إلى البنوك والصناديق', group: 'go' },
+  { keys: ['G', 'E'], en: 'Go to Entries',          ar: 'اذهب إلى القيود',        group: 'go' },
+  { keys: ['G', 'R'], en: 'Go to Reports',          ar: 'اذهب إلى التقارير',      group: 'go' },
+  { keys: ['G', 'T'], en: 'Go to Trades',           ar: 'اذهب إلى الصفقات',       group: 'go' },
+  { keys: ['⌘', 'K'], en: 'Search',                 ar: 'بحث',                   group: 'all' },
+  { keys: ['?'],      en: 'Show this list',         ar: 'اعرض هذه القائمة',       group: 'all' },
+  { keys: ['Esc'],    en: 'Close a window',         ar: 'أغلق النافذة',           group: 'all' },
 ];
 
 interface KeyboardHelpModalProps {
@@ -41,8 +36,11 @@ function Key({ k }: { k: string }) {
 }
 
 export function KeyboardHelpModal({ open, onClose }: KeyboardHelpModalProps) {
-  const { t } = useTranslation();
-  const categoryKeys = [...new Set(SHORTCUTS.map((s) => s.categoryKey))];
+  const { tr } = useTranslation();
+  const groups = [
+    { id: 'go' as const, en: 'Move around', ar: 'التنقل' },
+    { id: 'all' as const, en: 'Everywhere', ar: 'في كل مكان' },
+  ];
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -60,7 +58,7 @@ export function KeyboardHelpModal({ open, onClose }: KeyboardHelpModalProps) {
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div className="flex items-center gap-2">
             <Command className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-semibold">{t('keyboard.title')}</h2>
+            <h2 className="text-sm font-semibold">{tr('Keyboard shortcuts', 'اختصارات لوحة المفاتيح')}</h2>
           </div>
           <button
             onClick={onClose}
@@ -71,14 +69,14 @@ export function KeyboardHelpModal({ open, onClose }: KeyboardHelpModalProps) {
         </div>
 
         {/* Content */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-0 max-h-[60vh] overflow-y-auto divide-x divide-border">
-          {categoryKeys.map((catKey) => (
-            <div key={catKey} className="p-5">
-              <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{t(catKey as Parameters<typeof t>[0])}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-0 max-h-[60vh] overflow-y-auto divide-x divide-border rtl:divide-x-reverse">
+          {groups.map((g) => (
+            <div key={g.id} className="p-5">
+              <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{tr(g.en, g.ar)}</p>
               <div className="space-y-2.5">
-                {SHORTCUTS.filter((s) => s.categoryKey === catKey).map((s) => (
-                  <div key={s.descriptionKey} className="flex items-center justify-between gap-4">
-                    <span className="text-xs text-foreground/80">{t(s.descriptionKey as Parameters<typeof t>[0])}</span>
+                {SHORTCUTS.filter((s) => s.group === g.id).map((s) => (
+                  <div key={s.en} className="flex items-center justify-between gap-4">
+                    <span className="text-xs text-foreground/80">{tr(s.en, s.ar)}</span>
                     <div className="flex shrink-0 items-center gap-1">
                       {s.keys.map((k) => <Key key={k} k={k} />)}
                     </div>
@@ -92,13 +90,13 @@ export function KeyboardHelpModal({ open, onClose }: KeyboardHelpModalProps) {
         {/* Footer */}
         <div className="border-t border-border px-6 py-3 flex items-center justify-between">
           <p className="text-[11px] text-muted-foreground">
-            {t('keyboard.close')}
+            {tr('Press Esc or ? to close.', 'اضغط Esc أو ? للإغلاق.')}
           </p>
           <button
             onClick={onClose}
             className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
           >
-            {t('action.close')}
+            {tr('Close', 'إغلاق')}
           </button>
         </div>
       </div>

@@ -1,249 +1,135 @@
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { PageHint } from '@/components/shared/PageHint';
+import { Fragment, useMemo, useState } from 'react';
+import { HandCoins, Wallet, BarChart3, Clock } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
+import { PageHint } from '@/components/shared/PageHint';
+import { SectionCard } from '@/components/shared/SectionCard';
+import { StatCard } from '@/components/shared/StatCard';
+import { Button } from '@/components/ui/button';
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Segmented } from '@/components/shared/form';
+import { NewRequestDialog } from '@/components/operations/NewRequestDialog';
+import { usePartnerStats } from '@/lib/data/partners';
+import { useBooks } from '@/stores/books.store';
+import { fmtUSD, round2 } from '@/lib/data/money';
+import { daysAgo } from '@/lib/data/seed';
 import { useTranslation } from '@/lib/i18n/useTranslation';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { StatusBadge } from '@/components/shared/StatusBadge';
-import { Pagination } from '@/components/shared/Pagination';
-import { PageLoader, LoadingSpinner } from '@/components/shared/LoadingSpinner';
-import { toast } from '@/hooks/use-toast';
-import { fmt, fmtDate } from '@/lib/utils';
-import { api } from '@/api/client';
-import { DollarSign, GitBranch, ChevronRight } from 'lucide-react';
 
-interface IBCommission {
-  id: string;
-  ib_client_id: string;
-  ib_name?: string;
-  ib_code?: string;
-  ib_level?: string;
-  trade_id?: string;
-  amount: string;
-  currency: string;
-  status: string;
-  created_at: string;
-}
-
-interface IBSummary {
-  ib_client_id: string;
-  ib_name: string;
-  ib_code: string;
-  ib_level?: string;
-  parent_ib_id?: string | null;
-  parent_ib_name?: string | null;
-  sub_ib_count?: number;
-  total_pending: string;
-  total_paid: string;
-}
-
-const getCommissions = (q: { status?: string; limit: number; offset: number }) =>
-  api.get<{ success: boolean; data: { commissions: IBCommission[]; limit: number; offset: number } }>(
-    '/ib-commissions', { params: q }
-  ).then((r) => r.data.data);
-
-const getSummary = () =>
-  api.get<{ success: boolean; data: { summary: IBSummary[] } }>(
-    '/ib-commissions/summary'
-  ).then((r) => r.data.data);
-
-const payout = (ibId: string) =>
-  api.post<{ success: boolean; data: { journalId: string; totalPaid: string } }>(
-    `/ib-commissions/${ibId}/payout`
-  ).then((r) => r.data.data);
-
-const LIMIT = 20;
-
-const levelColors: Record<string, string> = {
-  L1: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  L2: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
-  L3: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
-};
-
-const levelIndentClass: Record<string, string> = {
-  L1: 'ml-0',
-  L2: 'ml-8',
-  L3: 'ml-16',
-};
+type Period = 'month' | '30d' | 'today';
 
 export default function IBCommissions() {
-  const { t } = useTranslation();
-  const qc = useQueryClient();
-  const [offset, setOffset] = useState(0);
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const { tr, nameOf } = useTranslation();
+  const clients = useBooks((s) => s.clients);
+  const trades = useBooks((s) => s.trades);
+  const [period, setPeriod] = useState<Period>('month');
+  const [payFor, setPayFor] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['ib-commissions', offset, statusFilter],
-    queryFn: () => getCommissions({ limit: LIMIT, offset, status: statusFilter === 'ALL' ? undefined : statusFilter }),
-  });
+  const today = new Date().toISOString().slice(0, 10);
+  const from = period === 'month' ? today.slice(0, 8) + '01' : period === '30d' ? daysAgo(30) : today;
+  const rows = usePartnerStats(from, today);
 
-  const { data: summaryData } = useQuery({
-    queryKey: ['ib-summary'],
-    queryFn: getSummary,
-  });
+  const totals = useMemo(() => ({
+    lots: round2(rows.reduce((s, r) => s + r.lots, 0)),
+    earned: round2(rows.reduce((s, r) => s + r.earned, 0)),
+    paid: round2(rows.reduce((s, r) => s + r.paid, 0)),
+    owed: round2(rows.reduce((s, r) => s + r.owed, 0)),
+    pending: round2(rows.reduce((s, r) => s + r.pendingLots * r.ib.commissionRate, 0)),
+  }), [rows]);
 
-  const { mutate: doPayout, isPending: paying } = useMutation({
-    mutationFn: payout,
-    onSuccess: (d) => {
-      toast({ title: 'Payout processed', description: `Total paid: $${fmt(d.totalPaid)}` });
-      qc.invalidateQueries({ queryKey: ['ib-commissions'] });
-      qc.invalidateQueries({ queryKey: ['ib-summary'] });
-    },
-    onError: (e: { response?: { data?: { error?: string } } }) =>
-      toast({ title: 'Error', description: e?.response?.data?.error ?? 'Payout failed', variant: 'destructive' }),
-  });
-
-  if (isLoading) return <PageLoader />;
-
-  const summaryList = summaryData?.summary ?? [];
+  const perClient = (ibId: string) => {
+    const mine = clients.filter((c) => c.ibParentId === ibId);
+    return mine.map((c) => {
+      const t = trades.filter((x) => x.clientId === c.id && x.status === 'closed' && (x.closedAt ?? '').slice(0, 10) >= from);
+      return { c, lots: round2(t.reduce((s, x) => s + x.lots, 0)), trades: t.length };
+    }).sort((a, b) => b.lots - a.lots);
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHeader
-        title={t('ibComm.title')}
-        subtitle={t('ibComm.subtitle')}
+        title={tr('Partner pay', 'أجور الشركاء')}
+        subtitle={tr('How much each partner earned, how much you paid, and what you still owe.', 'كم ربح كل شريك، وكم دفعت له، وكم بقي عليك.')}
         hint={
-          <PageHint id="ib-commissions" title={t('hint.ibComm.title')}>
-            {t('hint.ibComm.body')}
+          <PageHint id="ibpay-v2" title={tr('How is partner pay worked out?', 'كيف تُحسب أجور الشركاء؟')}>
+            {tr('Lots traded by their clients × the partner’s pay per lot. It is added to the books every time you close the day.', 'اللوتات التي تداولها زبائنه × أجر الشريك لكل لوت. ويُضاف إلى الدفاتر كل مرة تغلق فيها اليوم.')}
           </PageHint>
+        }
+        actions={
+          <Segmented<Period> value={period} onChange={setPeriod} options={[
+            { value: 'today', label: tr('Today', 'اليوم') },
+            { value: 'month', label: tr('This month', 'هذا الشهر') },
+            { value: '30d', label: tr('Last 30 days', 'آخر 30 يومًا') },
+          ]} />
         }
       />
 
-      {/* IB Hierarchy Tree */}
-      {summaryList.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <GitBranch className="h-4 w-4 text-muted-foreground" />
-            <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">IB Hierarchy</h2>
-          </div>
-          <div className="space-y-2">
-            {summaryList.map((s) => {
-              const level = s.ib_level ?? 'L1';
-              return (
-                <div key={s.ib_client_id} className={levelIndentClass[level] ?? 'ml-0'}>
-                  <Card>
-                    <CardHeader className="pb-2 pt-3 px-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-start gap-2">
-                          {(level === 'L2' || level === 'L3') && (
-                            <ChevronRight className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                          )}
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p className="font-semibold text-sm">{s.ib_name}</p>
-                              <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${levelColors[level] ?? 'bg-muted'}`}>
-                                {level}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                              <p className="text-xs text-muted-foreground font-mono">{s.ib_code}</p>
-                              {s.parent_ib_name && (
-                                <p className="text-xs text-muted-foreground">↳ via {s.parent_ib_name}</p>
-                              )}
-                              {s.sub_ib_count != null && s.sub_ib_count > 0 && (
-                                <p className="text-xs text-muted-foreground">· {s.sub_ib_count} sub-IB{s.sub_ib_count > 1 ? 's' : ''}</p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <DollarSign className="h-4 w-4 text-muted-foreground shrink-0" />
-                      </div>
-                    </CardHeader>
-                    <CardContent className="pb-3 px-4 space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Pending</span>
-                        <span className="font-semibold text-yellow-600">${fmt(s.total_pending)}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Paid</span>
-                        <span className="font-semibold text-green-600">${fmt(s.total_paid)}</span>
-                      </div>
-                      {Number(s.total_pending) > 0 && (
-                        <Button
-                          size="sm"
-                          className="w-full mt-1"
-                          onClick={() => doPayout(s.ib_client_id)}
-                          disabled={paying}
-                        >
-                          {paying && <LoadingSpinner className="h-3 w-3 mr-1" />}
-                          Pay Out ${fmt(s.total_pending)}
-                        </Button>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label={tr('Lots traded', 'اللوتات المتداولة')} value={totals.lots} icon={BarChart3} accent="blue" deltaLabel={tr('By clients partners brought', 'من زبائن أحضرهم الشركاء')} />
+        <StatCard label={tr('Pay earned', 'الأجر المكتسب')} value={fmtUSD(totals.earned, 2)} icon={HandCoins} accent="green" deltaLabel={tr('Already in the books', 'مسجّل في الدفاتر')} />
+        <StatCard label={tr('Not booked yet', 'لم يُسجّل بعد')} value={fmtUSD(totals.pending, 2)} icon={Clock} accent="amber" deltaLabel={tr('Booked when you close the day', 'يُسجّل عند إغلاق اليوم')} />
+        <StatCard label={tr('You owe partners', 'تدين للشركاء')} value={fmtUSD(totals.owed, 2)} icon={Wallet} accent="violet" deltaLabel={tr(`Paid ${fmtUSD(totals.paid)} in this period`, `دفعت ${fmtUSD(totals.paid)} في هذه الفترة`)} />
+      </div>
 
-      {/* Commission Detail Table */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setOffset(0); }}>
-              <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Statuses</SelectItem>
-                <SelectItem value="PENDING">Pending</SelectItem>
-                <SelectItem value="PAID">Paid</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('ibComm.col.ib')}</TableHead>
-                <TableHead>{t('col.code')}</TableHead>
-                <TableHead>Level</TableHead>
-                <TableHead>{t('col.amount')}</TableHead>
-                <TableHead>{t('col.status')}</TableHead>
-                <TableHead>{t('col.date')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data?.commissions?.length ? data.commissions.map((c) => {
-                const lv = c.ib_level ?? 'L1';
-                return (
-                  <TableRow key={c.id}>
-                    <TableCell className="font-medium">{c.ib_name ?? '—'}</TableCell>
-                    <TableCell className="font-mono text-sm text-muted-foreground">{c.ib_code ?? '—'}</TableCell>
-                    <TableCell>
-                      <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${levelColors[lv] ?? 'bg-muted'}`}>
-                        {lv}
-                      </span>
-                    </TableCell>
-                    <TableCell className="font-mono">
-                      ${fmt(c.amount)}{' '}
-                      <span className="text-xs text-muted-foreground">{c.currency}</span>
-                    </TableCell>
-                    <TableCell><StatusBadge status={c.status} /></TableCell>
-                    <TableCell className="text-sm">{fmtDate(c.created_at)}</TableCell>
-                  </TableRow>
-                );
-              }) : (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
-                    No commissions found
+      <SectionCard padded={false} title={tr('Each partner', 'كل شريك')} description={tr('Click a partner to see their clients.', 'اضغط على شريك لترى زبائنه.')}>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{tr('Partner', 'الشريك')}</TableHead>
+              <TableHead className="text-end">{tr('Lots', 'اللوتات')}</TableHead>
+              <TableHead className="hidden text-end sm:table-cell">{tr('Pay per lot', 'لكل لوت')}</TableHead>
+              <TableHead className="text-end">{tr('Earned', 'ربح')}</TableHead>
+              <TableHead className="hidden text-end md:table-cell">{tr('Paid', 'دُفع')}</TableHead>
+              <TableHead className="text-end">{tr('Still owed', 'متبقٍ')}</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((r) => (
+              <Fragment key={r.ib.id}>
+                <TableRow className="cursor-pointer" onClick={() => setOpen(open === r.ib.id ? null : r.ib.id)}>
+                  <TableCell><p className="font-medium">{nameOf(r.ib)}</p><p className="text-[11px] text-muted-foreground">{tr(`${r.clients} clients`, `${r.clients} زبائن`)}</p></TableCell>
+                  <TableCell className="text-end tabular-nums">{r.lots}</TableCell>
+                  <TableCell className="hidden text-end tabular-nums sm:table-cell">{fmtUSD(r.ib.commissionRate, 2)}</TableCell>
+                  <TableCell className="text-end font-mono text-success">{fmtUSD(r.earned, 2)}</TableCell>
+                  <TableCell className="hidden text-end font-mono md:table-cell">{fmtUSD(r.paid, 2)}</TableCell>
+                  <TableCell className="text-end font-mono font-semibold">{fmtUSD(r.owed, 2)}</TableCell>
+                  <TableCell className="text-end" onClick={(e) => e.stopPropagation()}>
+                    <Button size="xs" variant="outline" disabled={r.owed <= 0} onClick={() => setPayFor(r.ib.treeAccountCode)}>{tr('Pay', 'ادفع')}</Button>
                   </TableCell>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
-          <Pagination
-            offset={offset}
-            limit={LIMIT}
-            hasMore={(data?.commissions?.length ?? 0) === LIMIT}
-            onChange={setOffset}
-          />
-        </CardContent>
-      </Card>
+                {open === r.ib.id && (
+                  <TableRow className="bg-muted/30 hover:bg-muted/30">
+                    <TableCell colSpan={7}>
+                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        {perClient(r.ib.id).map(({ c, lots, trades: n }) => (
+                          <div key={c.id} className="flex items-center justify-between rounded-lg bg-card px-3 py-2 text-[13px]">
+                            <span>{nameOf(c)}<span className="ms-1 text-[11px] text-muted-foreground">({tr(`${n} trades`, `${n} صفقات`)})</span></span>
+                            <span className="font-mono">{lots} {tr('lots', 'لوت')} → {fmtUSD(lots * r.ib.commissionRate, 2)}</span>
+                          </div>
+                        ))}
+                        {perClient(r.ib.id).length === 0 && <p className="text-[13px] text-muted-foreground">{tr('No clients yet.', 'لا زبائن بعد.')}</p>}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </Fragment>
+            ))}
+          </TableBody>
+          <TableFooter>
+            <TableRow>
+              <TableCell className="font-semibold">{tr('Total', 'المجموع')}</TableCell>
+              <TableCell className="text-end font-semibold">{totals.lots}</TableCell>
+              <TableCell className="hidden sm:table-cell" />
+              <TableCell className="text-end font-mono font-semibold">{fmtUSD(totals.earned, 2)}</TableCell>
+              <TableCell className="hidden text-end font-mono font-semibold md:table-cell">{fmtUSD(totals.paid, 2)}</TableCell>
+              <TableCell className="text-end font-mono font-semibold">{fmtUSD(totals.owed, 2)}</TableCell>
+              <TableCell />
+            </TableRow>
+          </TableFooter>
+        </Table>
+      </SectionCard>
+
+      <NewRequestDialog open={!!payFor} presetAccount={payFor ?? undefined} presetType="ib_withdrawal" onClose={() => setPayFor(null)} />
     </div>
   );
 }

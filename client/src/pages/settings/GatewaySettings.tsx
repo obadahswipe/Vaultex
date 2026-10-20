@@ -1,182 +1,85 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Plus } from 'lucide-react';
+import { SectionCard } from '@/components/shared/SectionCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Badge } from '@/components/ui/badge';
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
-import { PageHint } from '@/components/shared/PageHint';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Field, NativeSelect, Toggle, attempt } from '@/components/shared/form';
+import { AccountPicker } from '@/components/shared/AccountPicker';
+import { useBooks } from '@/stores/books.store';
+import { useLedger } from '@/lib/data/hooks';
 import { useTranslation } from '@/lib/i18n/useTranslation';
-import { toast } from '@/hooks/use-toast';
-import { api } from '@/api/client';
-import { Settings2, Building2, Bitcoin, MoreHorizontal } from 'lucide-react';
+import type { Gateway } from '@/lib/data/types';
 
-interface Gateway {
-  id: string; name: string; type: string; is_active: boolean;
-  min_deposit: string; max_deposit: string; min_withdrawal: string; max_withdrawal: string;
-}
-
-type GatewayForm = Pick<Gateway, 'min_deposit' | 'max_deposit' | 'min_withdrawal' | 'max_withdrawal' | 'is_active'>;
-
-const getGateways = () =>
-  api.get<{ success: boolean; data: { gateways: Gateway[] } }>('/settings/gateways').then((r) => r.data.data.gateways);
-
-const updateGateway = ({ id, ...data }: Partial<Gateway> & { id: string }) =>
-  api.patch<{ success: boolean; data: Gateway }>(`/settings/gateways/${id}`, data).then((r) => r.data.data);
-
-const gwIcon = (type: string) => {
-  if (type === 'MANUAL')    return <Settings2 className="h-5 w-5" />;
-  if (type === 'BANK_WIRE') return <Building2 className="h-5 w-5" />;
-  if (type === 'CRYPTO')    return <Bitcoin className="h-5 w-5" />;
-  return <MoreHorizontal className="h-5 w-5" />;
+const KIND: Record<Gateway['kind'], { en: string; ar: string }> = {
+  bank: { en: 'Bank transfer', ar: 'تحويل بنكي' }, card: { en: 'Card', ar: 'بطاقة' },
+  crypto: { en: 'Crypto', ar: 'عملة رقمية' }, ewallet: { en: 'Online wallet', ar: 'محفظة إلكترونية' },
 };
-
-const typeColors: Record<string, string> = {
-  MANUAL:    'bg-blue-50 dark:bg-blue-950',
-  BANK_WIRE: 'bg-green-50 dark:bg-green-950',
-  CRYPTO:    'bg-orange-50 dark:bg-orange-950',
-  OTHER:     'bg-gray-50 dark:bg-gray-900',
-};
-
-const fmt = (v: string) => Number(v).toLocaleString('en-US');
 
 export default function GatewaySettings() {
-  const { t } = useTranslation();
-  const qc = useQueryClient();
-  const [configTarget, setConfigTarget] = useState<Gateway | null>(null);
-
-  const { data: gateways = [], isLoading } = useQuery({ queryKey: ['settings-gateways'], queryFn: getGateways });
-
-  const { mutate: update, isPending: updating } = useMutation({
-    mutationFn: updateGateway,
-    onSuccess: () => {
-      toast({ title: t('settings.gateways.toast.updated') });
-      qc.invalidateQueries({ queryKey: ['settings-gateways'] });
-      setConfigTarget(null);
-    },
-    onError: () => toast({ title: t('settings.gateways.toast.error'), variant: 'destructive' }),
-  });
-
-  if (isLoading) return <div className="py-8 text-center text-muted-foreground">{t('settings.gateways.loading')}</div>;
+  const { tr, nameOf } = useTranslation();
+  const gateways = useBooks((s) => s.gateways);
+  const updateGateway = useBooks((s) => s.updateGateway);
+  const addGateway = useBooks((s) => s.addGateway);
+  const { byCode } = useLedger();
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ name: '', kind: 'bank' as Gateway['kind'], accountCode: '', fee: '0' });
 
   return (
-    <div className="space-y-4">
-      <PageHint id="settings-gateways" title={t('settings.gateways.hint.title')}>
-        {t('settings.gateways.hint.body')}
-      </PageHint>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {gateways.map((gw) => (
-          <Card key={gw.id} className={!gw.is_active ? 'opacity-60' : undefined}>
-            <CardHeader className={`pb-3 pt-4 px-4 rounded-t-lg ${typeColors[gw.type] ?? ''}`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">{gwIcon(gw.type)}</span>
-                  <div>
-                    <p className="font-semibold text-sm">{gw.name}</p>
-                    <p className="text-xs text-muted-foreground font-mono">{gw.type}</p>
-                  </div>
-                </div>
-                <Badge variant={gw.is_active ? 'success' : 'secondary'} className="text-xs">
-                  {gw.is_active ? t('settings.gateways.active') : t('settings.gateways.inactive')}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="pt-3 pb-4 px-4 space-y-2">
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div>
-                  <p className="text-xs text-muted-foreground">{t('settings.gateways.minDeposit')}</p>
-                  <p className="font-mono font-medium">${fmt(gw.min_deposit)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{t('settings.gateways.maxDeposit')}</p>
-                  <p className="font-mono font-medium">${fmt(gw.max_deposit)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{t('settings.gateways.minWithdrawal')}</p>
-                  <p className="font-mono font-medium">${fmt(gw.min_withdrawal)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{t('settings.gateways.maxWithdrawal')}</p>
-                  <p className="font-mono font-medium">${fmt(gw.max_withdrawal)}</p>
-                </div>
-              </div>
-              <Button size="sm" variant="outline" className="w-full mt-1" onClick={() => setConfigTarget(gw)}>
-                {t('settings.gateways.configure')}
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+    <>
+      <SectionCard
+        padded={false}
+        title={tr('Ways clients can pay', 'طرق الدفع للزبائن')}
+        description={tr('Each way of paying sends money to one of your money places. The fee is what the provider keeps.', 'كل طريقة دفع ترسل المال إلى أحد أماكن مالك. والرسوم هي ما يأخذه المزوّد.')}
+        action={<Button size="sm" variant="gradient" className="gap-1" onClick={() => setOpen(true)}><Plus className="h-3.5 w-3.5" />{tr('Add', 'أضف')}</Button>}
+      >
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{tr('Name', 'الاسم')}</TableHead>
+              <TableHead className="hidden sm:table-cell">{tr('Kind', 'النوع')}</TableHead>
+              <TableHead className="hidden md:table-cell">{tr('Money goes to', 'يذهب المال إلى')}</TableHead>
+              <TableHead className="text-end">{tr('Fee %', 'الرسوم %')}</TableHead>
+              <TableHead className="text-center">{tr('On', 'مفعّل')}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {gateways.map((g) => (
+              <TableRow key={g.id}>
+                <TableCell className="font-medium">{g.name}</TableCell>
+                <TableCell className="hidden text-[13px] sm:table-cell">{tr(KIND[g.kind].en, KIND[g.kind].ar)}</TableCell>
+                <TableCell className="hidden text-[13px] md:table-cell">{nameOf(byCode.get(g.accountCode))}</TableCell>
+                <TableCell className="text-end"><Input type="number" step="0.1" className="ms-auto h-8 w-20 text-end" value={g.feePercent} onChange={(e) => updateGateway(g.id, { feePercent: Number(e.target.value) || 0 })} /></TableCell>
+                <TableCell className="text-center"><Toggle checked={g.enabled} onChange={(v) => updateGateway(g.id, { enabled: v })} /></TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </SectionCard>
 
-      {/* Configure Dialog */}
-      {configTarget && (
-        <Dialog open={!!configTarget} onOpenChange={(open) => { if (!open) setConfigTarget(null); }}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                {gwIcon(configTarget.type)}
-                {t('settings.gateways.dialogTitle')} {configTarget.name}
-              </DialogTitle>
-            </DialogHeader>
-            <ConfigForm
-              gateway={configTarget}
-              onSave={(d) => update({ id: configTarget.id, ...d })}
-              saving={updating}
-            />
-          </DialogContent>
-        </Dialog>
-      )}
-    </div>
-  );
-}
-
-function ConfigForm({ gateway, onSave, saving }: {
-  gateway: Gateway;
-  onSave: (d: Partial<GatewayForm>) => void;
-  saving: boolean;
-}) {
-  const { t } = useTranslation();
-  const { register, handleSubmit } = useForm<GatewayForm>({ defaultValues: gateway as unknown as GatewayForm });
-  const [isActive, setIsActive] = useState(String(gateway.is_active));
-
-  return (
-    <form onSubmit={handleSubmit((d) => onSave({ ...d, is_active: isActive === 'true' }))} className="space-y-4">
-      <div className="space-y-1">
-        <Label>{t('settings.gateways.field.status')}</Label>
-        <Select value={isActive} onValueChange={setIsActive}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="true">{t('settings.gateways.active')}</SelectItem>
-            <SelectItem value="false">{t('settings.gateways.inactive')}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <Label>{t('settings.gateways.field.minDep')}</Label>
-          <Input type="number" step="1" {...register('min_deposit')} />
-        </div>
-        <div className="space-y-1">
-          <Label>{t('settings.gateways.field.maxDep')}</Label>
-          <Input type="number" step="1" {...register('max_deposit')} />
-        </div>
-        <div className="space-y-1">
-          <Label>{t('settings.gateways.field.minWdr')}</Label>
-          <Input type="number" step="1" {...register('min_withdrawal')} />
-        </div>
-        <div className="space-y-1">
-          <Label>{t('settings.gateways.field.maxWdr')}</Label>
-          <Input type="number" step="1" {...register('max_withdrawal')} />
-        </div>
-      </div>
-      <Button type="submit" className="w-full" disabled={saving}>
-        {saving && <LoadingSpinner className="h-4 w-4 mr-2" />}
-        {t('settings.gateways.save')}
-      </Button>
-    </form>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{tr('Add a way to pay', 'أضف طريقة دفع')}</DialogTitle>
+            <DialogDescription>{tr('For example a new bank or a crypto network.', 'مثلًا بنك جديد أو شبكة عملة رقمية.')}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={tr('Name', 'الاسم')}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+            <Field label={tr('Kind', 'النوع')}>
+              <NativeSelect value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value as Gateway['kind'] })}>
+                {Object.entries(KIND).map(([k, v]) => <option key={k} value={k}>{tr(v.en, v.ar)}</option>)}
+              </NativeSelect>
+            </Field>
+            <Field label={tr('Money goes to', 'يذهب المال إلى')}><AccountPicker value={f.accountCode} onChange={(v) => setF({ ...f, accountCode: v })} categories={['banks', 'funds', 'suppliers']} /></Field>
+            <Field label={tr('Fee %', 'الرسوم %')}><Input type="number" value={f.fee} onChange={(e) => setF({ ...f, fee: e.target.value })} /></Field>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setOpen(false)}>{tr('Cancel', 'إلغاء')}</Button>
+            <Button variant="gradient" disabled={!f.name.trim() || !f.accountCode} onClick={() => { if (attempt(() => addGateway({ name: f.name.trim(), kind: f.kind, accountCode: f.accountCode, feePercent: Number(f.fee) || 0, enabled: true }), tr('Added', 'تمت الإضافة'))) { setOpen(false); setF({ name: '', kind: 'bank', accountCode: '', fee: '0' }); } }}>{tr('Add', 'أضف')}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

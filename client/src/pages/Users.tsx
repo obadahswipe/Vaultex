@@ -1,140 +1,113 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
-import { Button } from '@/components/ui/button';
+import { Plus, UserCog, Info } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
+import { PageHint } from '@/components/shared/PageHint';
 import { SectionCard } from '@/components/shared/SectionCard';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { StatusBadge } from '@/components/shared/StatusBadge';
-import { PageLoader, LoadingSpinner } from '@/components/shared/LoadingSpinner';
-import { toast } from '@/hooks/use-toast';
-import { fmtDate } from '@/lib/utils';
-import { api } from '@/api/client';
-import { Plus, UserX } from 'lucide-react';
-
-interface User { id: string; email: string; full_name: string; role_id: string; role_name?: string; is_active: boolean; last_login?: string; created_at: string; }
-interface Role { id: string; name: string; }
-
-const getUsers = () => api.get<{ success: boolean; data: { users: User[] } }>('/users').then((r) => r.data.data);
-const getRoles = () => api.get<{ success: boolean; data: { roles: Role[] } }>('/users/roles').then((r) => r.data.data);
-const createUser = (d: { email: string; password: string; full_name: string; role_id: string }) =>
-  api.post<{ success: boolean; data: User }>('/users', d).then((r) => r.data.data);
-const deactivateUser = (id: string) => api.patch(`/users/${id}/deactivate`);
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Field, NativeSelect, Toggle, attempt } from '@/components/shared/form';
+import { useBooks } from '@/stores/books.store';
+import { useActingUser } from '@/lib/data/hooks';
+import { ROLE_LABELS, isAdmin } from '@/lib/roles';
+import { useTranslation } from '@/lib/i18n/useTranslation';
+import { cn } from '@/lib/utils';
+import type { StaffUser } from '@/lib/data/types';
 
 export default function Users() {
-  const qc = useQueryClient();
+  const { tr, nameOf } = useTranslation();
+  const me = useActingUser();
+  const users = useBooks((s) => s.users);
+  const branches = useBooks((s) => s.branches);
+  const addUser = useBooks((s) => s.addUser);
+  const updateUser = useBooks((s) => s.updateUser);
   const [open, setOpen] = useState(false);
-  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<{
-    email: string; password: string; full_name: string; role_id: string;
-  }>();
-
-  const { data: usersData, isLoading } = useQuery({ queryKey: ['users'], queryFn: getUsers });
-  const { data: rolesData } = useQuery({ queryKey: ['roles'], queryFn: getRoles });
-
-  const { mutate: create, isPending } = useMutation({
-    mutationFn: createUser,
-    onSuccess: () => { toast({ title: 'User created' }); qc.invalidateQueries({ queryKey: ['users'] }); reset(); setOpen(false); },
-    onError: (e: { response?: { data?: { error?: string } } }) => toast({ title: 'Error', description: e?.response?.data?.error ?? 'Failed', variant: 'destructive' }),
-  });
-
-  const { mutate: deactivate } = useMutation({
-    mutationFn: deactivateUser,
-    onSuccess: () => { toast({ title: 'User deactivated' }); qc.invalidateQueries({ queryKey: ['users'] }); },
-    onError: (e: { response?: { data?: { error?: string } } }) => toast({ title: 'Error', description: e?.response?.data?.error ?? 'Failed', variant: 'destructive' }),
-  });
-
-  if (isLoading) return <PageLoader />;
+  const [f, setF] = useState({ name: '', email: '', role: 'operations_staff' as StaffUser['role'], branchId: 'br-1' });
+  const canEdit = isAdmin(me.role);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHeader
-        title="Users"
-        subtitle="Manage system users and roles"
-        actions={
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button><Plus className="h-4 w-4 mr-2" />Add User</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>New User</DialogTitle></DialogHeader>
-            <form onSubmit={handleSubmit((d) => create(d))} className="space-y-4">
-              <div className="space-y-1">
-                <Label>Full Name</Label>
-                <Input {...register('full_name', { required: true })} />
-                {errors.full_name && <p className="text-xs text-destructive">Required</p>}
-              </div>
-              <div className="space-y-1">
-                <Label>Email</Label>
-                <Input type="email" {...register('email', { required: true })} />
-                {errors.email && <p className="text-xs text-destructive">Required</p>}
-              </div>
-              <div className="space-y-1">
-                <Label>Password</Label>
-                <Input type="password" {...register('password', { required: true, minLength: 8 })} />
-                {errors.password && <p className="text-xs text-destructive">Min 8 characters</p>}
-              </div>
-              <div className="space-y-1">
-                <Label>Role</Label>
-                <Select onValueChange={(v) => setValue('role_id', v)}>
-                  <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
-                  <SelectContent>
-                    {rolesData?.roles?.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button type="submit" className="w-full" disabled={isPending}>
-                {isPending ? <LoadingSpinner className="h-4 w-4" /> : 'Create User'}
-              </Button>
-            </form>
-            </DialogContent>
-          </Dialog>
-        }
+        title={tr('Staff logins', 'حسابات الموظفين')}
+        subtitle={tr('Who can sign in, and what each person is allowed to do.', 'من يستطيع الدخول، وماذا يُسمح لكل شخص أن يفعل.')}
+        hint={<PageHint id="users-v2" title={tr('Give people only what they need', 'أعطِ كل شخص ما يحتاجه فقط')}>{tr('A cashier does not need to see salaries. A viewer cannot change anything. Pick the smallest job that lets each person do their work.', 'أمين الصندوق لا يحتاج إلى رؤية الرواتب. والمشاهد لا يستطيع تغيير شيء. اختر أصغر صلاحية تكفي لعمل كل شخص.')}</PageHint>}
+        actions={canEdit && <Button variant="gradient" className="gap-1.5" onClick={() => setOpen(true)}><Plus className="h-4 w-4" />{tr('Add a login', 'أضف حسابًا')}</Button>}
       />
 
+      <SectionCard title={tr('What each job can do', 'ماذا تستطيع كل وظيفة أن تفعل')}>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {(Object.keys(ROLE_LABELS) as StaffUser['role'][]).map((r) => (
+            <div key={r} className="rounded-xl border border-border/60 p-3">
+              <p className="flex items-center gap-2 text-[14px] font-semibold"><UserCog className="h-4 w-4 text-primary" />{tr(ROLE_LABELS[r].en, ROLE_LABELS[r].ar)}</p>
+              <p className="mt-1 text-[13px] text-muted-foreground">{tr(ROLE_LABELS[r].doesEn, ROLE_LABELS[r].doesAr)}</p>
+            </div>
+          ))}
+        </div>
+      </SectionCard>
+
       <SectionCard padded={false}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Last Login</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {usersData?.users?.length ? usersData.users.map((u) => (
-                <TableRow key={u.id}>
-                  <TableCell className="font-medium">{u.full_name}</TableCell>
-                  <TableCell>{u.email}</TableCell>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{tr('Person', 'الشخص')}</TableHead>
+              <TableHead>{tr('Job', 'الوظيفة')}</TableHead>
+              <TableHead className="hidden md:table-cell">{tr('Branch', 'الفرع')}</TableHead>
+              <TableHead className="hidden lg:table-cell">{tr('Last seen', 'آخر ظهور')}</TableHead>
+              <TableHead className="text-center">{tr('Can sign in', 'يستطيع الدخول')}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {users.map((u) => {
+              const b = branches.find((x) => x.id === u.branchId);
+              return (
+                <TableRow key={u.id} className={cn(!u.active && 'opacity-50')}>
+                  <TableCell><p className="font-medium">{u.name}{u.email === me.email && <span className="ms-2 rounded-full bg-primary/10 px-2 text-[11px] text-primary">{tr('you', 'أنت')}</span>}</p><p className="text-[12px] text-muted-foreground">{u.email}</p></TableCell>
                   <TableCell>
-                    <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs">{u.role_name}</span>
+                    {canEdit && u.email !== me.email ? (
+                      <NativeSelect value={u.role} onChange={(e) => updateUser(u.id, { role: e.target.value as StaffUser['role'] })} className="h-8 w-auto">
+                        {(Object.keys(ROLE_LABELS) as StaffUser['role'][]).map((r) => <option key={r} value={r}>{tr(ROLE_LABELS[r].en, ROLE_LABELS[r].ar)}</option>)}
+                      </NativeSelect>
+                    ) : <span className="text-[13px]">{tr(ROLE_LABELS[u.role].en, ROLE_LABELS[u.role].ar)}</span>}
                   </TableCell>
-                  <TableCell><StatusBadge status={u.is_active ? 'ACTIVE' : 'INACTIVE'} /></TableCell>
-                  <TableCell>{fmtDate(u.last_login)}</TableCell>
-                  <TableCell>{fmtDate(u.created_at)}</TableCell>
-                  <TableCell>
-                    {u.is_active && (
-                      <Button variant="ghost" size="sm" className="text-destructive" onClick={() => deactivate(u.id)}>
-                        <UserX className="h-3 w-3" />
-                      </Button>
-                    )}
+                  <TableCell className="hidden text-[13px] md:table-cell">{b ? nameOf({ name: b.name, arabic: b.arabic }) : '—'}</TableCell>
+                  <TableCell className="hidden text-[13px] text-muted-foreground lg:table-cell">{u.lastSeen ? new Date(u.lastSeen).toLocaleString('en-GB') : tr('Never', 'أبدًا')}</TableCell>
+                  <TableCell className="text-center">
+                    {canEdit && u.email !== me.email ? <Toggle checked={u.active} onChange={(v) => updateUser(u.id, { active: v })} /> : <span className="text-[12px] text-muted-foreground">{u.active ? tr('Yes', 'نعم') : tr('No', 'لا')}</span>}
                   </TableCell>
                 </TableRow>
-              )) : (
-                <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No users</TableCell></TableRow>
-              )}
-            </TableBody>
-          </Table>
+              );
+            })}
+          </TableBody>
+        </Table>
       </SectionCard>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{tr('Add a login', 'أضف حسابًا')}</DialogTitle>
+            <DialogDescription className="flex items-start gap-1.5"><Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />{tr('In the demo, every login uses the password Demo@123456.', 'في النسخة التجريبية، كل الحسابات تستخدم كلمة المرور Demo@123456.')}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={tr('Name', 'الاسم')}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+            <Field label={tr('Email', 'البريد الإلكتروني')}><Input type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
+            <Field label={tr('Job', 'الوظيفة')}>
+              <NativeSelect value={f.role} onChange={(e) => setF({ ...f, role: e.target.value as StaffUser['role'] })}>
+                {(Object.keys(ROLE_LABELS) as StaffUser['role'][]).map((r) => <option key={r} value={r}>{tr(ROLE_LABELS[r].en, ROLE_LABELS[r].ar)}</option>)}
+              </NativeSelect>
+            </Field>
+            <Field label={tr('Branch', 'الفرع')}>
+              <NativeSelect value={f.branchId} onChange={(e) => setF({ ...f, branchId: e.target.value })}>
+                {branches.map((b) => <option key={b.id} value={b.id}>{nameOf({ name: b.name, arabic: b.arabic })}</option>)}
+              </NativeSelect>
+            </Field>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setOpen(false)}>{tr('Cancel', 'إلغاء')}</Button>
+            <Button variant="gradient" disabled={!f.name.trim() || !f.email.includes('@')} onClick={() => { if (attempt(() => addUser({ ...f, name: f.name.trim(), email: f.email.trim().toLowerCase(), active: true }), tr('Login added', 'تمت إضافة الحساب'))) { setOpen(false); setF({ name: '', email: '', role: 'operations_staff', branchId: 'br-1' }); } }}>{tr('Add', 'أضف')}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

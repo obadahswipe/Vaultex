@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
@@ -15,6 +16,7 @@ interface InstallPWAButtonProps {
 }
 
 export function InstallPWAButton({ className, compact }: InstallPWAButtonProps) {
+  const { tr } = useTranslation();
   const [evt, setEvt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
 
@@ -50,7 +52,7 @@ export function InstallPWAButton({ className, compact }: InstallPWAButtonProps) 
         variant="soft"
         onClick={handleInstall}
         className={cn('relative', className)}
-        title="Install app"
+        title={tr('Put Vaultex on your phone or computer', 'ضع فولتكس على هاتفك أو حاسوبك')}
       >
         <Download className="h-4 w-4" />
         <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-primary animate-pulse-soft" />
@@ -61,7 +63,7 @@ export function InstallPWAButton({ className, compact }: InstallPWAButtonProps) 
   return (
     <Button variant="soft" size="sm" onClick={handleInstall} className={cn('gap-1.5', className)}>
       <Download className="h-3.5 w-3.5" />
-      Install app
+      {tr('Install the app', 'ثبّت التطبيق')}
     </Button>
   );
 }

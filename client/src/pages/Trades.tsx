@@ -1,407 +1,121 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import * as XLSX from 'xlsx';
-import { Button } from '@/components/ui/button';
+import { useMemo, useState } from 'react';
+import { RefreshCw, TrendingUp, Activity, BarChart3, Coins, Search } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { PageHint } from '@/components/shared/PageHint';
-import { useTranslation } from '@/lib/i18n/useTranslation';
-import { HelpTooltip } from '@/components/shared/HelpTooltip';
 import { SectionCard } from '@/components/shared/SectionCard';
+import { StatCard } from '@/components/shared/StatCard';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { Pagination } from '@/components/shared/Pagination';
-import { TableSkeleton } from '@/components/shared/SkeletonLoaders';
-import { EmptyTrades } from '@/components/shared/EmptyState';
-import { getTrades, getTrade } from '@/api/trades.api';
-import { fmt, fmtDate, fmtDateTime } from '@/lib/utils';
-import { Download, CheckCircle2, Clock, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react';
+import { Segmented, attempt } from '@/components/shared/form';
+import { useBooks } from '@/stores/books.store';
+import { fmtUSD, round2 } from '@/lib/data/money';
+import { daysAgo } from '@/lib/data/seed';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 import { cn } from '@/lib/utils';
-import { useSortable } from '@/hooks/useSortable';
 
-const LIMIT = 20;
-
-const bookBadge = (book: string) =>
-  book === 'A'
-    ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-    : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
+type View = 'open' | 'today' | 'closed';
 
 export default function Trades() {
-  const { t } = useTranslation();
-  const [offset, setOffset]       = useState(0);
-  const [ticket, setTicket]       = useState('');
-  const [symbol, setSymbol]       = useState('ALL');
-  const [bookType, setBookType]   = useState('ALL');
-  const [posted, setPosted]       = useState('ALL');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate]     = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const { tr, nameOf } = useTranslation();
+  const trades = useBooks((s) => s.trades);
+  const clients = useBooks((s) => s.clients);
+  const refreshPrices = useBooks((s) => s.refreshPrices);
+  const closeTrade = useBooks((s) => s.closeTrade);
+  const [view, setView] = useState<View>('open');
+  const [search, setSearch] = useState('');
+  const today = new Date().toISOString().slice(0, 10);
+  const clientById = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
 
-  const reset = () => { setOffset(0); };
+  const open = trades.filter((t) => t.status === 'open');
+  const closedToday = trades.filter((t) => t.status === 'closed' && (t.closedAt ?? '').slice(0, 10) === today);
+  const monthStart = today.slice(0, 8) + '01';
+  const closedMonth = trades.filter((t) => t.status === 'closed' && (t.closedAt ?? '').slice(0, 10) >= monthStart);
+  const floating = round2(open.reduce((s, t) => s + t.profit, 0));
+  const fees = round2(closedMonth.reduce((s, t) => s + t.commission, 0));
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['trades', offset, ticket, symbol, bookType, posted, startDate, endDate],
-    queryFn: () => getTrades({
-      limit: LIMIT, offset,
-      ticket: ticket || undefined,
-      symbol: symbol === 'ALL' ? undefined : symbol,
-      book_type: bookType === 'ALL' ? undefined : bookType,
-      journal_posted: posted === 'ALL' ? undefined : posted === 'true',
-      start_date: startDate || undefined,
-      end_date: endDate || undefined,
-    }),
-  });
-
-  const { data: detail, isLoading: detailLoading } = useQuery({
-    queryKey: ['trade-detail', selectedId],
-    queryFn: () => getTrade(selectedId!),
-    enabled: !!selectedId,
-  });
-
-  const exportXLSX = () => {
-    const rows = (data?.trades ?? []).map((t) => ({
-      Ticket:          t.ticket,
-      Client:          t.client_name ?? '',
-      'Client Code':   t.client_code ?? '',
-      'MT5 Login':     t.mt5_login ?? '',
-      Symbol:          t.symbol,
-      Direction:       t.direction,
-      Volume:          t.volume,
-      'Open Price':    t.open_price,
-      'Close Price':   t.close_price,
-      'MT5 Profit':    t.profit,
-      'Spread Income': t.spread_income,
-      Book:            t.book_type + '-Book',
-      'Journal Posted': t.journal_posted ? 'Yes' : 'No',
-      'Close Time':    fmtDate(t.close_time),
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Trades');
-    XLSX.writeFile(wb, `trades-export-${new Date().toISOString().slice(0, 10)}.xlsx`);
-  };
-
-  const trades  = data?.trades  ?? [];
-  const totals  = data?.totals;
-
-  const { sorted: sortedTrades, sortKey, sortDir, toggle } = useSortable(
-    trades as unknown as Record<string, unknown>[],
-    'close_time',
-    'desc',
-  );
-
-  function SortHead({ label, field, className }: { label: string; field: string; className?: string }) {
-    const active = sortKey === field;
-    return (
-      <TableHead
-        className={cn('cursor-pointer select-none hover:bg-muted/30 transition-colors', className)}
-        onClick={() => toggle(field as never)}
-      >
-        <span className="inline-flex items-center gap-1">
-          {label}
-          {active
-            ? sortDir === 'asc'
-              ? <ChevronUp className="h-3 w-3 text-primary" />
-              : <ChevronDown className="h-3 w-3 text-primary" />
-            : <ChevronsUpDown className="h-3 w-3 text-muted-foreground/40" />}
-        </span>
-      </TableHead>
-    );
-  }
+  const list = useMemo(() => {
+    const base = view === 'open' ? trades.filter((t) => t.status === 'open')
+      : view === 'today' ? trades.filter((t) => t.status === 'closed' && (t.closedAt ?? '').slice(0, 10) === today)
+      : trades.filter((t) => t.status === 'closed' && (t.closedAt ?? '') >= daysAgo(30));
+    const q = search.trim().toLowerCase();
+    return base
+      .filter((t) => !q || t.symbol.toLowerCase().includes(q) || String(t.ticket).includes(q) || nameOf(clientById.get(t.clientId)).toLowerCase().includes(q))
+      .sort((a, b) => (b.closedAt ?? b.openedAt).localeCompare(a.closedAt ?? a.openedAt));
+  }, [view, trades, today, search, clientById, nameOf]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHeader
-        title={t('trades.title')}
-        subtitle={t('trades.subtitle')}
+        title={tr('Trades', 'الصفقات')}
+        subtitle={tr('What your clients are buying and selling on MT5.', 'ما يشتريه زبائنك وما يبيعونه على MT5.')}
         hint={
-          <PageHint id="trades" title={t('hint.trades.title')}>
-            {t('hint.trades.body')}
+          <PageHint id="trades-v2" title={tr('How to read this page', 'كيف تقرأ هذه الصفحة')}>
+            {tr('"Result" is the client’s win or loss. "Kept in-house" means your company takes the other side: if the client wins, you lose the same amount. "Sent to partner" means a trading partner takes that risk instead.', '"النتيجة" هي ربح الزبون أو خسارته. "داخلي" يعني أن شركتك تأخذ الطرف الآخر: إذا ربح الزبون تخسر أنت المبلغ نفسه. "مُرسلة للشريك" تعني أن شريك التداول يتحمل هذا الخطر بدلًا منك.')}
           </PageHint>
         }
-        actions={
-          <Button variant="outline" onClick={exportXLSX}>
-            <Download className="h-4 w-4 mr-2" />{t('btn.export.excel')}
-          </Button>
-        }
+        actions={<Button variant="outline" className="gap-1.5" onClick={refreshPrices}><RefreshCw className="h-4 w-4" />{tr('Update prices', 'حدّث الأسعار')}</Button>}
       />
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label={tr('Open trades', 'صفقات مفتوحة')} value={open.length} icon={Activity} accent="blue" deltaLabel={tr(`${round2(open.reduce((s, t) => s + t.lots, 0))} lots`, `${round2(open.reduce((s, t) => s + t.lots, 0))} لوت`)} />
+        <StatCard label={tr('Clients win/lose now', 'ربح/خسارة الزبائن الآن')} value={fmtUSD(floating)} icon={TrendingUp} accent={floating > 0 ? 'pink' : 'green'} deltaLabel={floating > 0 ? tr('Clients are winning right now', 'الزبائن يربحون الآن') : tr('Clients are losing right now', 'الزبائن يخسرون الآن')} />
+        <StatCard label={tr('Closed today', 'أُغلقت اليوم')} value={closedToday.length} icon={BarChart3} accent="violet" deltaLabel={tr('Booked when you close the day', 'تُسجّل عند إغلاق اليوم')} />
+        <StatCard label={tr('Trading fees this month', 'رسوم التداول هذا الشهر')} value={fmtUSD(fees)} icon={Coins} accent="green" deltaLabel={tr('Paid by clients', 'دفعها الزبائن')} />
+      </div>
 
       <SectionCard padded={false}>
         <div className="flex flex-wrap items-center gap-3 p-5">
-            <Input
-              className="w-32"
-              placeholder="Ticket #"
-              value={ticket}
-              onChange={(e) => { setTicket(e.target.value); reset(); }}
-            />
-            <Select value={symbol} onValueChange={(v) => { setSymbol(v); reset(); }}>
-              <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Symbols</SelectItem>
-                {['EURUSD', 'GBPUSD', 'XAUUSD', 'USDJPY', 'USDCHF', 'AUDUSD'].map((s) => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={bookType} onValueChange={(v) => { setBookType(v); reset(); }}>
-              <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Books</SelectItem>
-                <SelectItem value="A">A-Book</SelectItem>
-                <SelectItem value="B">B-Book</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={posted} onValueChange={(v) => { setPosted(v); reset(); }}>
-              <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Journal</SelectItem>
-                <SelectItem value="true">Posted</SelectItem>
-                <SelectItem value="false">Not Posted</SelectItem>
-              </SelectContent>
-            </Select>
-            <Input type="date" className="w-40" value={startDate} onChange={(e) => { setStartDate(e.target.value); reset(); }} />
-            <Input type="date" className="w-40" value={endDate} onChange={(e) => { setEndDate(e.target.value); reset(); }} />
+          <Segmented<View> value={view} onChange={setView} options={[
+            { value: 'open', label: tr('Open now', 'مفتوحة الآن'), count: open.length },
+            { value: 'today', label: tr('Closed today', 'أُغلقت اليوم'), count: closedToday.length },
+            { value: 'closed', label: tr('Closed, last 30 days', 'مغلقة، آخر 30 يومًا') },
+          ]} />
+          <div className="relative min-w-[200px] flex-1">
+            <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={tr('Search client, symbol or ticket…', 'ابحث عن زبون أو رمز أو رقم…')} className="ps-9" />
           </div>
-
-          {isLoading ? (
-            <TableSkeleton rows={8} cols={7} />
-          ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <SortHead label="Ticket"     field="ticket"       className="w-24" />
-                <SortHead label="Client"     field="client_name" />
-                <SortHead label="Symbol"     field="symbol"       className="w-24" />
-                <SortHead label="Dir"        field="direction"    className="w-20" />
-                <TableHead className="w-20">
-                  <span className="inline-flex items-center gap-1">
-                    Volume
-                    <HelpTooltip text="How much was traded — 1 lot = 100,000 units of the base currency" side="bottom" />
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{tr('Client', 'الزبون')}</TableHead>
+              <TableHead>{tr('What', 'ماذا')}</TableHead>
+              <TableHead className="text-end">{tr('Lots', 'لوت')}</TableHead>
+              <TableHead className="hidden text-end md:table-cell">{tr('Price', 'السعر')}</TableHead>
+              <TableHead className="text-end">{tr('Result', 'النتيجة')}</TableHead>
+              <TableHead className="hidden lg:table-cell">{tr('Risk taken by', 'من يتحمل الخطر')}</TableHead>
+              {view === 'open' && <TableHead />}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {list.slice(0, 200).map((t) => (
+              <TableRow key={t.id}>
+                <TableCell>
+                  <p className="font-medium">{nameOf(clientById.get(t.clientId))}</p>
+                  <p className="text-[11px] text-muted-foreground">#{t.ticket} · {(t.closedAt ?? t.openedAt).slice(0, 16).replace('T', ' ')}</p>
+                </TableCell>
+                <TableCell>
+                  <span className={cn('me-1.5 rounded px-1.5 py-0.5 text-[11px] font-bold', t.side === 'buy' ? 'bg-emerald-500/12 text-emerald-600' : 'bg-red-500/12 text-red-600')}>
+                    {t.side === 'buy' ? tr('BUY', 'شراء') : tr('SELL', 'بيع')}
                   </span>
-                </TableHead>
-                <TableHead className="w-28">Open</TableHead>
-                <TableHead className="w-28">Close</TableHead>
-                <TableHead className="w-28">
-                  <span className="inline-flex items-center gap-1">
-                    MT5 P&L
-                    <HelpTooltip text="Net gain or loss on this trade in USD" side="bottom" />
-                  </span>
-                </TableHead>
-                <SortHead label="Spread Inc." field="spread_income" className="w-28" />
-                <SortHead label="Book"       field="book_type"    className="w-20" />
-                <TableHead className="w-24">Journal</TableHead>
-                <SortHead label="Close Time" field="close_time"   className="w-28" />
+                  <span className="font-mono text-[13px] font-semibold">{t.symbol}</span>
+                </TableCell>
+                <TableCell className="text-end tabular-nums">{t.lots}</TableCell>
+                <TableCell className="hidden text-end font-mono text-[12px] md:table-cell" dir="ltr">{t.openPrice} → {t.closePrice ?? t.currentPrice}</TableCell>
+                <TableCell className={cn('text-end font-mono font-semibold', t.profit >= 0 ? 'text-success' : 'text-destructive')} dir="ltr">{fmtUSD(t.profit, 2)}</TableCell>
+                <TableCell className="hidden text-[12px] lg:table-cell">{t.book === 'B' ? tr('Kept in-house', 'داخلي') : tr('Sent to partner', 'مُرسلة للشريك')}</TableCell>
+                {view === 'open' && (
+                  <TableCell className="text-end">
+                    <Button size="xs" variant="outline" onClick={() => attempt(() => closeTrade(t.id), tr(`Trade ${t.ticket} closed`, `أُغلقت الصفقة ${t.ticket}`))}>{tr('Close', 'أغلق')}</Button>
+                  </TableCell>
+                )}
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sortedTrades.length ? (sortedTrades as unknown as typeof trades).map((t) => (
-                <TableRow
-                  key={t.id}
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => setSelectedId(t.id)}
-                >
-                  <TableCell className="font-mono text-xs text-muted-foreground">{t.ticket}</TableCell>
-                  <TableCell>
-                    <div>
-                      <p className="font-medium text-sm">{t.client_name ?? '—'}</p>
-                      <p className="text-xs text-muted-foreground font-mono">{t.client_code}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="font-semibold">{t.symbol}</TableCell>
-                  <TableCell>
-                    <span className={cn('font-semibold', t.direction === 'BUY' ? 'text-success dark:text-green-400' : 'text-destructive dark:text-red-400')}>
-                      {t.direction}
-                    </span>
-                  </TableCell>
-                  <TableCell className="font-mono">{t.volume.toFixed(2)}</TableCell>
-                  <TableCell className="font-mono text-sm">{t.open_price}</TableCell>
-                  <TableCell className="font-mono text-sm">{t.close_price}</TableCell>
-                  <TableCell className={`font-mono font-semibold ${Number(t.profit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    ${fmt(t.profit)}
-                  </TableCell>
-                  <TableCell className="font-mono text-green-700 dark:text-green-400">
-                    ${fmt(t.spread_income)}
-                  </TableCell>
-                  <TableCell>
-                    <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${bookBadge(t.book_type)}`}>
-                      {t.book_type}-Book
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    {t.journal_posted
-                      ? <CheckCircle2 className="h-4 w-4 text-success dark:text-green-400" />
-                      : <Clock className="h-4 w-4 text-muted-foreground" />}
-                  </TableCell>
-                  <TableCell className="text-sm">{fmtDate(t.close_time)}</TableCell>
-                </TableRow>
-              )) : (
-                <TableRow>
-                  <TableCell colSpan={12} className="p-0">
-                    <EmptyTrades />
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-          )}
-
-          {/* Summary bar */}
-          {!isLoading && totals && (
-            <div className="border-t bg-muted/30 px-4 py-3 flex flex-wrap gap-6 text-sm">
-              <div>
-                <span className="text-muted-foreground">Total Volume: </span>
-                <span className="font-semibold">{fmt(totals.volume)} lots</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Spread Income: </span>
-                <span className="font-semibold text-success dark:text-green-400">${fmt(totals.spread_income)}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">B-Book P&amp;L: </span>
-                <span className={`font-semibold ${totals.b_book_pl >= 0 ? 'text-success dark:text-green-400' : 'text-destructive dark:text-red-400'}`}>
-                  ${fmt(totals.b_book_pl)}
-                </span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Net Broker P&amp;L: </span>
-                <span className={`font-semibold ${totals.net_broker_pl >= 0 ? 'text-success dark:text-green-400' : 'text-destructive dark:text-red-400'}`}>
-                  ${fmt(totals.net_broker_pl)}
-                </span>
-              </div>
-            </div>
-          )}
-
-          <Pagination
-            offset={offset}
-            limit={LIMIT}
-            hasMore={trades.length === LIMIT}
-            onChange={setOffset}
-          />
+            ))}
+          </TableBody>
+        </Table>
+        {list.length === 0 && <p className="px-6 py-12 text-center text-[13px] text-muted-foreground">{tr('No trades here.', 'لا صفقات هنا.')}</p>}
       </SectionCard>
-
-      {/* Trade Detail Dialog */}
-      <Dialog open={!!selectedId} onOpenChange={(open) => { if (!open) setSelectedId(null); }}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              Trade Detail {detail ? `— #${detail.ticket}` : ''}
-            </DialogTitle>
-          </DialogHeader>
-
-          {detailLoading || !detail ? (
-            <div className="py-8 text-center text-muted-foreground">Loading...</div>
-          ) : (
-            <div className="space-y-5">
-              {/* Trade info grid */}
-              <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                <Row label="Client"    value={`${detail.client_name} (${detail.client_code})`} />
-                <Row label="MT5 Login" value={String(detail.mt5_login ?? '—')} mono />
-                <Row label="Symbol"    value={detail.symbol} />
-                <Row label="Direction" value={detail.direction}
-                  valueClass={detail.direction === 'BUY' ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'} />
-                <Row label="Volume"    value={detail.volume.toFixed(2) + ' lots'} />
-                <Row label="Book Type" value={detail.book_type + '-Book'} />
-                <Row label="Open Price"  value={String(detail.open_price)} mono />
-                <Row label="Close Price" value={String(detail.close_price)} mono />
-                <Row label="MT5 Profit"
-                  value={'$' + fmt(detail.profit)}
-                  valueClass={detail.profit >= 0 ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'} />
-                <Row label="Spread Income" value={'$' + fmt(detail.spread_income)}
-                  valueClass="text-green-700 dark:text-green-400 font-semibold" />
-                <Row label="Swap"       value={'$' + fmt(detail.swap)} />
-                <Row label="Commission" value={'$' + fmt(detail.commission)} />
-                <Row label="Close Time" value={fmtDateTime(detail.close_time)} />
-                <Row label="Journal"    value={detail.journal_posted ? 'Posted' : 'Pending'}
-                  valueClass={detail.journal_posted ? 'text-green-600' : 'text-muted-foreground'} />
-              </div>
-
-              {/* Linked journal entries */}
-              {detail.journals.length > 0 && (
-                <>
-                  <Separator />
-                  <div>
-                    <p className="font-semibold text-sm mb-3">Linked Journal Entries</p>
-                    <div className="space-y-3">
-                      {detail.journals.map((j) => (
-                        <div key={j.id} className="border rounded-md p-3 text-sm">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-mono text-xs text-muted-foreground">{j.id}</span>
-                            <Badge variant="success" className="text-xs">Posted</Badge>
-                          </div>
-                          <p className="text-muted-foreground text-xs mb-2">{j.narration}</p>
-                          <table className="w-full text-xs">
-                            <thead>
-                              <tr className="text-muted-foreground">
-                                <th className="text-left pb-1">Account</th>
-                                <th className="text-right pb-1">Debit</th>
-                                <th className="text-right pb-1">Credit</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {j.lines.map((l, i) => (
-                                <tr key={i}>
-                                  <td className="py-0.5">{l.account_code} {l.account_name}</td>
-                                  <td className="text-right font-mono">{Number(l.debit) ? '$' + fmt(l.debit) : '—'}</td>
-                                  <td className="text-right font-mono">{Number(l.credit) ? '$' + fmt(l.credit) : '—'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Linked IB commissions */}
-              {detail.commissions.length > 0 && (
-                <>
-                  <Separator />
-                  <div>
-                    <p className="font-semibold text-sm mb-3">IB Commissions Generated</p>
-                    <div className="space-y-2">
-                      {detail.commissions.map((c) => (
-                        <div key={c.id} className="flex items-center justify-between text-sm border rounded-md px-3 py-2">
-                          <div>
-                            <span className="font-medium">{c.ib_name ?? '—'}</span>
-                            <span className="text-muted-foreground font-mono text-xs ml-2">{c.ib_code}</span>
-                            {c.ib_level && (
-                              <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-muted">{c.ib_level}</span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-semibold">${fmt(c.amount)}</span>
-                            <Badge variant={c.status === 'PAID' ? 'success' : 'secondary'} className="text-xs">
-                              {c.status}
-                            </Badge>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
-  );
-}
-
-function Row({
-  label, value, mono, valueClass,
-}: {
-  label: string; value: string; mono?: boolean; valueClass?: string;
-}) {
-  return (
-    <>
-      <span className="text-muted-foreground">{label}</span>
-      <span className={`${mono ? 'font-mono' : ''} ${valueClass ?? ''}`}>{value}</span>
-    </>
   );
 }

@@ -4,15 +4,16 @@ import { useAuthStore } from '@/stores/auth.store';
 import { Sidebar } from './Sidebar';
 import { Navbar } from './Navbar';
 import { BottomNav } from './BottomNav';
-import { SheetTabsBar } from '@/components/shared/SheetTabsBar';
 import { QuickActionFAB } from '@/components/shared/QuickActionFAB';
 import { UniversalSearchPalette } from '@/components/shared/UniversalSearchPalette';
 import { KeyboardHelpModal } from '@/components/shared/KeyboardHelpModal';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { WifiOff, X } from 'lucide-react';
+import { useTranslation } from '@/lib/i18n/useTranslation';
 
 /* ── Offline banner ───────────────────────────────────────── */
 function OfflineBanner() {
+  const { tr } = useTranslation();
   const [offline, setOffline] = useState(!navigator.onLine);
   const [dismissed, setDismissed] = useState(false);
 
@@ -36,8 +37,8 @@ function OfflineBanner() {
   return (
     <div className="relative z-50 flex items-center gap-3 bg-amber-500/95 px-4 py-2.5 text-sm font-medium text-amber-950 backdrop-blur-sm">
       <WifiOff className="h-4 w-4 shrink-0" />
-      <span className="flex-1">You&apos;re offline — showing cached data. Some actions are unavailable.</span>
-      <button onClick={() => setDismissed(true)} className="rounded-lg p-1 hover:bg-amber-600/30 transition-colors" aria-label="Dismiss">
+      <span className="flex-1">{tr("You are offline. You can still look around, and your changes are saved on this device.", 'أنت غير متصل بالإنترنت. ما زال بإمكانك التصفح، وتُحفظ تغييراتك على هذا الجهاز.')}</span>
+      <button onClick={() => setDismissed(true)} className="rounded-lg p-1 hover:bg-amber-600/30 transition-colors" aria-label={tr('Close', 'إغلاق')}>
         <X className="h-4 w-4" />
       </button>
     </div>
@@ -63,8 +64,8 @@ function AppLayoutInner() {
     let pendingG = false;
     let timer: ReturnType<typeof setTimeout>;
     const NAV_MAP: Record<string, string> = {
-      d: '/', o: '/operations', c: '/clients',
-      r: '/reports', t: '/trades', j: '/journals',
+      d: '/', h: '/', o: '/operations', c: '/clients',
+      r: '/reports', t: '/trades', e: '/entries', b: '/treasury',
     };
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
@@ -89,7 +90,6 @@ function AppLayoutInner() {
             </div>
           </div>
         </main>
-        <SheetTabsBar />
       </div>
 
       <BottomNav />

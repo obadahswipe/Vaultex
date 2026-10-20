@@ -1,5 +1,5 @@
-import { authApi } from './client';
-import { MOCK_TOKEN, MOCK_USER, mockAuthData } from '../mocks/data/auth.mock';
+import { useBooks } from '@/stores/books.store';
+import { PostingError } from '@/lib/data/ledger';
 
 export interface LoginInput { email: string; password: string; }
 
@@ -16,26 +16,25 @@ export interface LoginResponse {
   permissions: string[];
 }
 
-export const authLogin = (data: LoginInput): Promise<LoginResponse> => {
-  if (import.meta.env.PROD) {
-    if (data.email === mockAuthData.validEmail && data.password === mockAuthData.validPassword) {
-      return Promise.resolve({ token: MOCK_TOKEN, user: MOCK_USER, permissions: [] });
-    }
-    return Promise.reject(new Error('Login failed — check credentials'));
+/** Every demo login uses this password. */
+export const DEMO_PASSWORD = 'Demo@123456';
+
+/**
+ * Demo sign-in. It checks the staff list kept in the app, so it works the same
+ * on the live site and on a laptop. A real server login replaces this later.
+ */
+export const authLogin = async (data: LoginInput): Promise<LoginResponse> => {
+  const email = data.email.trim().toLowerCase();
+  const user = useBooks.getState().users.find((u) => u.email.toLowerCase() === email && u.active);
+  if (!user || data.password !== DEMO_PASSWORD) {
+    throw new PostingError('The email or password is not right.', 'البريد الإلكتروني أو كلمة المرور غير صحيحة.');
   }
-  return authApi
-    .post<{ success: boolean; data: LoginResponse }>('/login', data)
-    .then((r) => r.data.data);
+  useBooks.getState().setActingAs(user.email);
+  return {
+    token: `demo.${user.id}.${Date.now()}`,
+    user: { id: user.id, email: user.email, full_name: user.name, role: user.role },
+    permissions: [],
+  };
 };
 
-export const authRefresh = (token: string): Promise<string> => {
-  if (import.meta.env.PROD) return Promise.resolve(token);
-  return authApi
-    .post<{ success: boolean; data: { token: string } }>('/refresh', { token })
-    .then((r) => r.data.data.token);
-};
-
-export const authLogout = (token: string) => {
-  if (import.meta.env.PROD) return Promise.resolve();
-  return authApi.post('/logout', {}, { headers: { Authorization: `Bearer ${token}` } });
-};
+export const authLogout = async () => undefined;
