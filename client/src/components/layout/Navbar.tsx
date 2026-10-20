@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Moon, Sun, LogOut, Bell, Search, ChevronDown, UserCircle2, AlertTriangle, Info, ShieldAlert, Check, X, Repeat,
 } from 'lucide-react';
+import { AskVaultexButton } from '@/components/ai/AskVaultex';
 import { Button } from '@/components/ui/button';
 import { useUIStore } from '@/stores/ui.store';
 import { useAuthStore } from '@/stores/auth.store';
@@ -67,7 +68,7 @@ export function Navbar({ onSearchClick }: { onSearchClick?: () => void }) {
       {/* Phone brand */}
       <div className="flex items-center gap-2 md:hidden">
         <div className="grid h-8 w-8 place-items-center rounded-xl gradient-bg"><span className="text-[11px] font-bold text-white">FX</span></div>
-        <span className="text-sm font-bold">{t('app.name')}</span>
+        <span className="hidden text-sm font-bold min-[420px]:inline">{t('app.name')}</span>
       </div>
 
       {/* Search */}
@@ -84,6 +85,8 @@ export function Navbar({ onSearchClick }: { onSearchClick?: () => void }) {
       </div>
 
       <div className="ms-auto flex items-center gap-1.5">
+        <span className="hidden sm:inline-flex"><AskVaultexButton /></span>
+        <span className="sm:hidden"><AskVaultexButton compact /></span>
         <Button variant="ghost" size="icon" onClick={onSearchClick} className="h-9 w-9 text-muted-foreground sm:hidden" aria-label={tr('Search', 'بحث')}>
           <Search className="h-4 w-4" />
         </Button>

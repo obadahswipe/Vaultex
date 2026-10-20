@@ -7,6 +7,7 @@ import { BottomNav } from './BottomNav';
 import { QuickActionFAB } from '@/components/shared/QuickActionFAB';
 import { UniversalSearchPalette } from '@/components/shared/UniversalSearchPalette';
 import { KeyboardHelpModal } from '@/components/shared/KeyboardHelpModal';
+import { AskVaultexPanel } from '@/components/ai/AskVaultex';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { WifiOff, X } from 'lucide-react';
 import { useTranslation } from '@/lib/i18n/useTranslation';
@@ -96,6 +97,7 @@ function AppLayoutInner() {
       <QuickActionFAB />
       <UniversalSearchPalette open={searchActive} onClose={() => setSearchActive(false)} />
       <KeyboardHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <AskVaultexPanel />
     </div>
   );
 }

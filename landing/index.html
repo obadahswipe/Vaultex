@@ -1,0 +1,1755 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vaultex · The back office for forex brokers</title>
+<meta name="description" content="Vaultex keeps the books for forex brokers, checks every account against MT5, and answers your questions in plain words. In English and Arabic.">
+<meta name="theme-color" content="#0B0E12">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230B0E12'/><circle cx='16' cy='16' r='9.5' fill='none' stroke='%23C9D2DC' stroke-width='2.4'/><circle cx='16' cy='16' r='2.6' fill='%236E9BFF'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..800&family=Geist:wght@300..700&family=Geist+Mono:wght@400;500&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="preload" as="image" href="assets/poster.webp" media="(min-width: 900px)">
+<link rel="preload" as="image" href="assets/poster-m.webp" media="(max-width: 899px)">
+<link rel="stylesheet" href="scrollcraft.css">
+<noscript><style>[data-sc-cue],[data-sc-in],[data-sc-stagger]>*{opacity:1!important;transform:none!important}</style></noscript>
+<style>
+  :root {
+    --sc-canvas:     #0B0E12;
+    --sc-surface:    #131820;
+    --sc-ink:        #E9EDF1;
+    --sc-ink-soft:   #98A3AF;
+    --sc-accent:     #6E9BFF;
+    --sc-accent-ink: #07122A;
+    --sc-font-display: "Archivo", system-ui, sans-serif;
+    --sc-font-text:    "Geist", system-ui, sans-serif;
+    --sc-font-mono:    "Geist Mono", ui-monospace, monospace;
+    --sc-shadow-color: 214 40% 3%;
+    --vx-gap:   #F0A24B;   /* status only: an open reconciliation gap */
+    --vx-steel-1: #2A323C;
+    --vx-steel-2: #1A2028;
+    --vx-bar-h: 4.25rem;
+  }
+
+  /* ----------------------------------------------------------- chrome -- */
+  .vx-bar {
+    position: fixed; inset: 0 0 auto 0; z-index: var(--sc-z-chrome);
+    height: var(--vx-bar-h);
+    display: flex; align-items: center; justify-content: space-between;
+    padding-inline: var(--sc-gutter);
+    padding-top: env(safe-area-inset-top);
+  }
+  .vx-bar::before {
+    content: ""; position: absolute; inset: 0 0 -2.5rem 0; z-index: -1; pointer-events: none;
+    background: linear-gradient(to bottom, color-mix(in oklab, var(--sc-canvas) 82%, transparent), transparent);
+  }
+  .vx-mark { display: inline-flex; align-items: center; gap: 0.6rem; text-decoration: none; color: var(--sc-ink); }
+  .vx-mark svg { width: 1.6rem; height: 1.6rem; }
+  .vx-mark span {
+    font-family: "Archivo", system-ui, sans-serif; font-stretch: 118%; font-weight: 640;
+    font-size: 1rem; letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .vx-cta {
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.55rem;
+    min-height: 2.75rem; padding: 0 1.15rem;
+    border-radius: var(--sc-r-pill);
+    background: var(--sc-accent); color: var(--sc-accent-ink);
+    font-weight: 600; font-size: var(--sc-t-sm); letter-spacing: 0;
+    text-decoration: none; white-space: nowrap;
+    box-shadow: var(--sc-e2), inset 0 1px 0 color-mix(in oklab, white 35%, transparent);
+    transition: transform 140ms var(--sc-ease-out), background-color 160ms var(--sc-ease-out);
+  }
+  .vx-cta svg { width: 1rem; height: 1rem; }
+  .vx-cta:active { transform: scale(0.97); }
+  @media (hover: hover) and (pointer: fine) {
+    .vx-cta:hover { background: color-mix(in oklab, var(--sc-accent) 86%, white); }
+  }
+  .vx-cta--quiet {
+    background: color-mix(in oklab, var(--sc-ink) 8%, transparent); color: var(--sc-ink);
+    box-shadow: inset 0 0 0 1px var(--sc-hairline-strong);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .vx-cta--quiet:hover { background: color-mix(in oklab, var(--sc-ink) 14%, transparent); }
+  }
+
+  .vx-bar__end { display: flex; align-items: center; gap: var(--sc-3); }
+  .vx-lang {
+    appearance: none; border: 0; cursor: pointer;
+    min-height: 2.75rem; min-width: 2.75rem; padding: 0 1rem; border-radius: var(--sc-r-pill);
+    background: color-mix(in oklab, var(--sc-canvas) 40%, transparent); color: var(--sc-ink);
+    box-shadow: inset 0 0 0 1px var(--sc-hairline-strong);
+    font-size: var(--sc-t-sm); font-weight: 600; line-height: 1;
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    transition: background-color 160ms var(--sc-ease-out), transform 140ms var(--sc-ease-out);
+  }
+  .vx-lang:lang(ar) { font-family: "Cairo", system-ui, sans-serif; font-size: 0.95rem; }
+  .vx-lang:lang(en) { font-family: "Geist", system-ui, sans-serif; }
+  .vx-lang:active { transform: scale(0.97); }
+  @media (hover: hover) and (pointer: fine) { .vx-lang:hover { background: color-mix(in oklab, var(--sc-ink) 10%, transparent); } }
+
+  /* ------------------------------------------------- Arabic, right to left --
+     Cairo carries both voices in Arabic: no negative tracking (it breaks the
+     joins), more leading, one weight step up. Numbers stay left to right. */
+  :root[lang="ar"] { --sc-font-display: "Cairo", system-ui, sans-serif; --sc-font-text: "Cairo", system-ui, sans-serif; }
+  :root[lang="ar"] :is(.vx-h1, .vx-inside h2, .vx-close-copy h2, .vx-tension h2, .rc__copy h2, .pt__head h2, .vx-h2) {
+    letter-spacing: 0; font-stretch: normal; font-weight: 700; line-height: 1.22; }
+  :root[lang="ar"] .vx-h1 { line-height: 1.16; }
+  :root[lang="ar"] :is(.rc__meter dt, .rc__label) { font-family: "Cairo", system-ui, sans-serif; letter-spacing: 0; text-transform: none; font-size: var(--sc-t-sm); }
+  :root[lang="ar"] .rc__log b, :root[lang="ar"] .rc__log i { font-family: var(--sc-font-mono); }
+  :root[lang="ar"] .vx-cta { font-size: 0.95rem; }
+  [dir="rtl"] .vx-arrow { transform: scaleX(-1); }
+  @media (min-width: 900px) and (min-aspect-ratio: 23/20) {
+    [dir="rtl"] .vx-colscrim { background: linear-gradient(270deg, color-mix(in oklab, var(--sc-canvas) 72%, transparent) 0%,
+                               color-mix(in oklab, var(--sc-canvas) 36%, transparent) 70%, transparent 100%); }
+  }
+  /* --------------------------------------------------------- the vault -- */
+  .vx-stage { background: var(--sc-canvas); isolation: isolate; }
+  .vx-poster, .vx-plane { position: absolute; left: 0; top: 0; pointer-events: none; }
+  .vx-poster { width: 100%; height: 100%; object-fit: cover; object-position: 60% 50%; z-index: 0;
+               transition: opacity 420ms var(--sc-ease-out); max-width: none; }
+  .vx-plane { will-change: transform; opacity: 0; transition: opacity 420ms var(--sc-ease-out); }
+  .vx-plane img { display: block; width: 100%; height: 100%; max-width: none; }
+  .is-live .vx-plane { opacity: 1; }
+  .is-live .vx-poster { opacity: 0; }
+  .vx-hall   { z-index: 1; }
+  .is-tall.has-gap .vx-wall img, .is-tall.has-gap .vx-poster {
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 14%); mask-image: linear-gradient(to bottom, transparent, #000 14%); }
+  .vx-glow   { z-index: 2; border-radius: 50%; mix-blend-mode: screen;
+               background: radial-gradient(closest-side, rgb(255 178 92 / 0.32), rgb(255 150 70 / 0.1) 45%, transparent 72%); }
+  .vx-wall   { z-index: 4; }
+  .vx-spill  { z-index: 5; border-radius: 50%; mix-blend-mode: screen;
+               background: radial-gradient(closest-side, rgb(255 170 90 / 0.30), rgb(255 150 80 / 0.10) 48%, transparent 76%); }
+  .vx-seam   { z-index: 6; border-radius: 50%; mix-blend-mode: screen; }
+  .vx-seam > i { position: absolute; inset: 0; border-radius: 50%;
+                 background: radial-gradient(closest-side, transparent 96.2%, rgb(255 190 120 / 0.55) 97.1%, rgb(255 160 80 / 0.16) 98.4%, transparent 100%);
+                 filter: blur(1.2px); }
+  .is-live .vx-seam > i { animation: vx-breathe 4.6s ease-in-out infinite; }
+  .vx-shadow { z-index: 8; border-radius: 50%;
+               background: radial-gradient(closest-side, rgb(3 5 8 / 0.78) 86%, rgb(3 5 8 / 0.42) 94%, transparent 100%);
+               filter: blur(10px); }
+  .vx-door   { z-index: 9; }
+  .vx-door > img { position: absolute; inset: 0; }
+  .vx-door__metal { will-change: transform; }
+  .vx-door__light { mix-blend-mode: overlay; }
+  .vx-door { isolation: isolate; }
+  .vx-pillar { z-index: 10; }
+  .is-tall .vx-pillar { display: none; }   /* on phones the copy runs edge to edge */
+  .vx-pillar > i { position: absolute; inset: 0; filter: blur(14px);
+                   background: linear-gradient(90deg, #06080B 0%, #0A0D11 58%, #232A33 82%, #3A2E24 90%, transparent 100%); }
+  .vx-pillar--r > i { transform: scaleX(-1); }
+  .vx-dust   { z-index: 11; mix-blend-mode: screen; }
+  .vx-dust img { object-fit: cover; opacity: 0.3; }
+  .is-live .vx-dust img { animation: vx-drift 38s ease-in-out infinite alternate; }
+  .vx-stage.is-idle *, .vx-stage.is-idle { animation-play-state: paused !important; }
+  @keyframes vx-breathe { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+  @keyframes vx-drift { from { transform: translate3d(-1.5%, 0.8%, 0) scale(1.04); } to { transform: translate3d(1.5%, -1.2%, 0) scale(1.07); } }
+
+  /* the floor of every vault stage fades to the page ground, so when the pin
+     releases the stage leaves without a hard edge */
+  .vx-floor { position: absolute; inset: auto 0 0 0; height: 22vh; z-index: 13; pointer-events: none;
+              background: linear-gradient(to top, var(--sc-canvas), transparent); }
+  .vx-ceiling { position: absolute; inset: 0 0 auto 0; height: 26vh; z-index: 6; pointer-events: none;
+                background: linear-gradient(to bottom, var(--sc-canvas), transparent); }
+  .vx-colscrim { position: absolute; z-index: 7; inset-block: 0; inset-inline-start: 0; pointer-events: none;
+                 background: linear-gradient(90deg, color-mix(in oklab, var(--sc-canvas) 72%, transparent) 0%,
+                             color-mix(in oklab, var(--sc-canvas) 36%, transparent) 70%, transparent 100%); }
+
+  /* copy that lives inside the scene */
+  .vx-open {
+    position: absolute; z-index: 7;
+    inset-inline-start: var(--sc-gutter); top: 50%;
+    width: var(--vx-col, 30rem);
+    translate: 0 -46%;
+  }
+  .vx-h1 {
+    font-family: var(--sc-font-display); font-weight: 640; font-stretch: 80%;
+    font-size: clamp(2.3rem, calc(var(--vx-col, 30rem) / 6.1), 6rem);
+    line-height: 0.94; letter-spacing: -0.018em; margin: 0; text-wrap: balance;
+  }
+  .vx-open p { margin: var(--sc-5) 0 0; color: color-mix(in oklab, var(--sc-ink) 80%, var(--sc-ink-soft));
+               font-size: var(--sc-t-base); line-height: 1.55; max-width: 34ch; text-wrap: pretty; }
+  .vx-open .vx-cta { margin-top: var(--sc-6); }
+  .vx-inside {
+    position: absolute; z-index: 3; left: 50%; top: 50%; translate: -50% -50%;
+    width: min(46rem, 84vw); text-align: center;
+  }
+  .vx-inside h2 {
+    font-family: var(--sc-font-display); font-weight: 600; font-stretch: 86%;
+    font-size: clamp(2.2rem, 1.4rem + 3.4vw, 4.8rem); line-height: 0.98; letter-spacing: -0.02em; margin: 0;
+    text-wrap: balance; text-shadow: 0 2px 24px rgb(5 7 10 / 0.65);
+  }
+  .vx-inside p { margin: var(--sc-4) auto 0; max-width: 36ch; color: color-mix(in oklab, var(--sc-ink) 86%, transparent);
+                 text-shadow: 0 1px 12px rgb(5 7 10 / 0.8); text-wrap: pretty; }
+  .vx-inside-scrim { position: absolute; z-index: 2; left: 50%; top: 50%; width: min(64rem, 120vw); height: 60vh;
+                     translate: -50% -50%; pointer-events: none; opacity: 0;
+                     background: radial-gradient(closest-side, rgb(6 8 11 / 0.62), rgb(6 8 11 / 0.3) 55%, transparent); }
+
+  /* the closing door carries the action on its hub */
+  .vx-hub { position: absolute; z-index: 12; translate: -50% -50%; }
+  .vx-hub .vx-cta { min-height: 3.25rem; padding: 0 1.5rem; font-size: var(--sc-t-base); }
+  .vx-close-copy { position: absolute; z-index: 7; inset-inline-start: var(--sc-gutter); top: 50%; translate: 0 -55%;
+                   width: var(--vx-col, 30rem); }
+  .vx-close-copy h2 {
+    font-family: var(--sc-font-display); font-weight: 640; font-stretch: 80%;
+    font-size: clamp(2.2rem, calc(var(--vx-col, 30rem) / 6.6), 5.4rem); line-height: 0.95; letter-spacing: -0.018em; margin: 0;
+    text-wrap: balance;
+  }
+  .vx-close-copy p { margin: var(--sc-5) 0 0; color: color-mix(in oklab, var(--sc-ink) 80%, var(--sc-ink-soft)); max-width: 32ch; text-wrap: pretty; }
+  .vx-foot {
+    position: absolute; z-index: 14; inset: auto 0 0 0;
+    display: flex; flex-wrap: wrap; gap: var(--sc-2) var(--sc-6); align-items: center; justify-content: space-between;
+    padding: var(--sc-4) var(--sc-gutter) calc(var(--sc-4) + env(safe-area-inset-bottom));
+    font-size: var(--sc-t-xs); color: var(--sc-ink-soft);
+  }
+  .vx-foot nav { display: flex; gap: var(--sc-5); }
+  .vx-foot a { color: var(--sc-ink); text-decoration-color: var(--sc-hairline-strong); }
+
+  /* reduced motion keeps the vault as still frames, with no pinned travel */
+  .vx-still { display: none; }
+
+  /* ---------------------------------------------------------- tension -- */
+  .vx-tension { padding-block: clamp(7rem, 16vh, 12rem) clamp(5rem, 12vh, 9rem); }
+  .vx-tension .sc-wrap { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: var(--sc-5); }
+  .vx-tension h2 {
+    grid-column: 1 / span 10;
+    font-family: var(--sc-font-display); font-weight: 560; font-stretch: 92%;
+    font-size: var(--sc-t-3xl); line-height: 1.02; letter-spacing: -0.022em; margin: 0; text-wrap: balance;
+  }
+  .vx-tension h2 em { font-style: normal; color: var(--vx-gap); }
+  .vx-tension p { grid-column: 6 / span 6; margin-top: var(--sc-7); font-size: var(--sc-t-lg); line-height: 1.5;
+                  color: var(--sc-ink-soft); max-width: 40ch; text-wrap: pretty; }
+
+  /* -------------------------------------------- the reconciliation wall -- */
+  .vx-recon .sc-stage { display: grid; align-items: center; }
+  .rc {
+    width: 100%; max-width: 92rem; margin-inline: auto;
+    padding: calc(var(--vx-bar-h) + 1.5rem) var(--sc-gutter) 2.5rem;
+    display: grid; grid-template-columns: minmax(19rem, 0.82fr) 1.18fr; gap: clamp(2rem, 5vw, 5.5rem); align-items: center;
+  }
+  .rc__copy h2 {
+    font-family: var(--sc-font-display); font-weight: 600; font-stretch: 88%;
+    font-size: var(--sc-t-2xl); line-height: 1.02; letter-spacing: -0.02em; margin: 0; text-wrap: balance;
+  }
+  .rc__copy > p { margin: var(--sc-4) 0 0; color: var(--sc-ink-soft); max-width: 40ch; text-wrap: pretty; }
+  .rc__meter { margin: var(--sc-6) 0 0; display: grid; grid-template-columns: repeat(3, auto); justify-content: start; gap: var(--sc-6); }
+  .rc__meter div { display: grid; gap: 0.2rem; }
+  .rc__meter dt { font-family: var(--sc-font-mono); font-size: var(--sc-t-xs); letter-spacing: 0.06em; text-transform: uppercase; color: var(--sc-ink-soft); }
+  .rc__meter dd { margin: 0; font-family: var(--sc-font-display); font-stretch: 92%; font-weight: 560;
+                  font-size: var(--sc-t-xl); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  .rc__meter dd.is-gap { color: var(--vx-gap); }
+  .rc__log { list-style: none; margin: var(--sc-6) 0 0; padding: 0; display: grid; gap: 0.1rem;
+             font-size: var(--sc-t-sm); min-height: calc(5 * 1.95rem); align-content: start; }
+  .rc__log li { display: grid; grid-template-columns: 4.6rem 1fr auto; gap: var(--sc-3); align-items: baseline;
+                padding: 0.35rem 0; border-top: 1px solid var(--sc-hairline); opacity: 0; transform: translate3d(0, 6px, 0);
+                transition: opacity 260ms var(--sc-ease-out), transform 260ms var(--sc-ease-out); }
+  .rc__log li.on { opacity: 1; transform: none; }
+  .rc__log b { font-family: var(--sc-font-mono); font-weight: 500; font-size: var(--sc-t-xs); color: var(--sc-ink); }
+  .rc__log span { color: var(--sc-ink-soft); }
+  .rc__log span strong { color: var(--sc-ink); font-weight: 500; }
+  .rc__log i { font-style: normal; font-family: var(--sc-font-mono); font-size: var(--sc-t-xs); color: var(--sc-ink); white-space: nowrap; }
+  .rc__done { margin: var(--sc-5) 0 0; font-weight: 600; color: var(--sc-ink); opacity: 0;
+              transition: opacity 300ms var(--sc-ease-out); display: flex; gap: 0.5rem; align-items: center; }
+  .rc__done.on { opacity: 1; }
+  .rc__done svg { width: 1.1rem; height: 1.1rem; color: var(--sc-accent); }
+
+  .rc__wall-wrap { display: grid; gap: var(--sc-3); }
+  .rc__label { display: flex; justify-content: space-between; gap: var(--sc-4); font-family: var(--sc-font-mono);
+               font-size: var(--sc-t-xs); letter-spacing: 0.05em; text-transform: uppercase; color: var(--sc-ink-soft); }
+  .rc__wall {
+    list-style: none; margin: 0; padding: clamp(0.6rem, 1.2vw, 1rem);
+    display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: clamp(4px, 0.5vw, 8px);
+    border-radius: var(--sc-r-md);
+    background: linear-gradient(180deg, #161B22, #0F1318);
+    box-shadow: var(--sc-e3), inset 0 1px 0 color-mix(in oklab, var(--sc-ink) 9%, transparent), inset 0 0 0 1px rgb(0 0 0 / 0.5);
+  }
+  .bx {
+    position: relative; aspect-ratio: 4 / 3; border-radius: 3px; overflow: hidden;
+    background: linear-gradient(160deg, var(--vx-steel-1), var(--vx-steel-2) 70%);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07), inset 0 -1px 0 rgb(0 0 0 / 0.45), 0 1px 2px rgb(0 0 0 / 0.5);
+    transition: background-color 200ms var(--sc-ease-out), box-shadow 220ms var(--sc-ease-out);
+  }
+  .bx__no { position: absolute; left: 9%; top: 10%; font-family: var(--sc-font-mono); font-size: clamp(7px, 0.62vw, 10.5px);
+            letter-spacing: 0.02em; color: rgb(233 237 241 / 0.5); transition: color 200ms var(--sc-ease-out); }
+  .bx__key { position: absolute; right: 12%; top: 50%; width: 9%; aspect-ratio: 1; translate: 0 -50%; border-radius: 50%;
+             background: #06080B; box-shadow: 0 1px 0 rgb(255 255 255 / 0.08); }
+  .bx__key::after { content: ""; position: absolute; left: 50%; top: 70%; width: 36%; height: 120%; translate: -50% 0; background: #06080B; border-radius: 1px; }
+  .bx__bolt { position: absolute; left: 9%; bottom: 14%; width: 34%; height: 9%; border-radius: 2px;
+              background: rgb(255 255 255 / 0.08); transform-origin: left center; transform: scaleX(0.35);
+              transition: transform 260ms var(--sc-ease-out), background-color 200ms var(--sc-ease-out); }
+  .bx__amt { position: absolute; left: 9%; bottom: 10%; font-family: var(--sc-font-mono); font-size: clamp(7px, 0.6vw, 10px);
+             color: var(--vx-gap); opacity: 0; transition: opacity 180ms var(--sc-ease-out); font-variant-numeric: tabular-nums; }
+  .bx.is-scan { box-shadow: inset 0 0 0 1px rgb(233 237 241 / 0.5), 0 0 0 1px rgb(233 237 241 / 0.2); }
+  .bx.is-ok .bx__bolt { transform: scaleX(1); background: var(--sc-accent); }
+  .bx.is-ok .bx__no { color: rgb(233 237 241 / 0.82); }
+  .bx.is-gap { box-shadow: inset 0 0 0 1px rgb(240 162 75 / 0.85), inset 0 0 18px rgb(240 162 75 / 0.18); }
+  .bx.is-gap .bx__amt { opacity: 1; }
+  .bx.is-gap .bx__bolt { opacity: 0; }
+
+  /* ------------------------------------------------------- portals -- */
+  .vx-portals { padding-block: clamp(6rem, 14vh, 10rem); }
+  .pt__head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: var(--sc-5); }
+  .pt__head h2 { font-family: var(--sc-font-display); font-weight: 600; font-stretch: 88%; font-size: var(--sc-t-3xl);
+                 line-height: 1; letter-spacing: -0.022em; margin: 0; }
+  .pt__toggle { display: inline-flex; padding: 4px; border-radius: var(--sc-r-pill); box-shadow: inset 0 0 0 1px var(--sc-hairline-strong); }
+  .pt__toggle button { appearance: none; border: 0; background: transparent; min-height: 2.5rem; padding: 0 1rem; border-radius: var(--sc-r-pill);
+                       cursor: pointer; color: var(--sc-ink-soft); font-size: var(--sc-t-sm); transition: background-color 160ms var(--sc-ease-out), color 160ms var(--sc-ease-out); }
+  .pt__toggle button[aria-pressed="true"] { background: var(--sc-ink); color: var(--sc-canvas); }
+  .pt__toggle button:lang(ar) { font-family: "Cairo", var(--sc-font-text); }
+  .pt__stack { display: grid; margin-top: var(--sc-7); }
+  .pt__stack > * { grid-area: 1 / 1; }
+  .pt__layer { background: var(--sc-canvas); }
+  .pt__layer[lang="ar"] { font-family: "Cairo", var(--sc-font-text); }
+  .pt__rows { list-style: none; margin: 0; padding: 0; }
+  .pt__row { display: grid; grid-template-columns: minmax(10rem, 0.9fr) minmax(0, 2fr); gap: var(--sc-5) var(--sc-7);
+             padding: clamp(1.4rem, 3vw, 2.4rem) 0; border-top: 1px solid var(--sc-hairline-strong); align-items: baseline; }
+  .pt__row:last-child { border-bottom: 1px solid var(--sc-hairline-strong); }
+  .pt__row h3 { margin: 0; font-family: var(--sc-font-display); font-stretch: 90%; font-weight: 600; font-size: var(--sc-t-xl); letter-spacing: -0.012em; }
+  .pt__layer[lang="ar"] .pt__row h3 { font-family: "Cairo", var(--sc-font-text); letter-spacing: 0; font-weight: 700; }
+  .pt__row ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem 0.6rem; }
+  .pt__row li { padding: 0.35rem 0.8rem; border-radius: var(--sc-r-pill); box-shadow: inset 0 0 0 1px var(--sc-hairline-strong);
+                font-size: var(--sc-t-sm); color: color-mix(in oklab, var(--sc-ink) 86%, var(--sc-ink-soft)); }
+  .pt__note { margin-top: var(--sc-5); color: var(--sc-ink-soft); font-size: var(--sc-t-sm); max-width: 60ch; }
+
+  /* ------------------------------------------------------- section nav -- */
+  .vx-nav { position: absolute; left: 50%; translate: -50% 0; display: flex; gap: 0.25rem; }
+  .vx-nav a { display: inline-flex; align-items: center; min-height: 2.5rem; padding: 0 0.8rem; border-radius: var(--sc-r-pill);
+              color: color-mix(in oklab, var(--sc-ink) 78%, var(--sc-ink-soft)); text-decoration: none; font-size: var(--sc-t-sm);
+              transition: color 160ms var(--sc-ease-out), background-color 160ms var(--sc-ease-out); }
+  .vx-nav a[aria-current="true"] { color: var(--sc-ink); background: color-mix(in oklab, var(--sc-ink) 8%, transparent); }
+  @media (hover: hover) and (pointer: fine) { .vx-nav a:hover { color: var(--sc-ink); } }
+  @media (max-width: 1179px) { .vx-nav { display: none; } }
+
+  /* shared section heading voice for the explanatory acts */
+  .vx-h2 { font-family: var(--sc-font-display); font-weight: 600; font-stretch: 88%; font-size: var(--sc-t-2xl);
+           line-height: 1.02; letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+  .vx-lede { margin: var(--sc-4) 0 0; color: var(--sc-ink-soft); max-width: 42ch; text-wrap: pretty; }
+
+  /* ------------------------------------------------ follow one deposit -- */
+  .vx-how .sc-stage { display: grid; align-items: center; }
+  .hw {
+    width: 100%; max-width: 92rem; margin-inline: auto;
+    padding: calc(var(--vx-bar-h) + 1.25rem) var(--sc-gutter) 2rem;
+    display: grid; grid-template-columns: minmax(19rem, 0.86fr) 1.14fr; gap: clamp(2rem, 5vw, 6rem); align-items: center;
+  }
+  .hw__steps { list-style: none; margin: var(--sc-6) 0 0; padding: 0; }
+  .hw__step { display: grid; grid-template-columns: 1.4rem 1fr; gap: 0.15rem var(--sc-3); padding: 0.7rem 0;
+              border-top: 1px solid var(--sc-hairline); }
+  .hw__step:last-child { border-bottom: 1px solid var(--sc-hairline); }
+  .hw__step i { grid-row: 1 / span 2; margin-top: 0.42rem; width: 0.7rem; height: 0.7rem; border-radius: 50%;
+                box-shadow: inset 0 0 0 1.5px var(--sc-hairline-strong); transition: background-color 200ms var(--sc-ease-out), box-shadow 200ms var(--sc-ease-out); }
+  .hw__step b { font-weight: 600; color: var(--sc-ink-soft); transition: color 200ms var(--sc-ease-out); }
+  .hw__step span { font-size: var(--sc-t-sm); line-height: 1.5; color: var(--sc-ink-soft); opacity: 0.55; transition: opacity 220ms var(--sc-ease-out); text-wrap: pretty; }
+  .hw__step.is-done i { background: var(--sc-accent); box-shadow: none; }
+  .hw__step.is-done b { color: var(--sc-ink); }
+  .hw__step.is-on i { background: transparent; box-shadow: inset 0 0 0 1.5px var(--sc-accent), 0 0 0 4px color-mix(in oklab, var(--sc-accent) 22%, transparent); }
+  .hw__step.is-on b { color: var(--sc-ink); }
+  .hw__step.is-on span { opacity: 1; color: color-mix(in oklab, var(--sc-ink) 84%, var(--sc-ink-soft)); }
+  .hw__now { display: none; }
+
+  .hw__desk { position: relative; display: grid; justify-items: center; }
+  .slip {
+    position: relative; width: min(100%, 45rem); border-radius: var(--sc-r-md);
+    display: grid; grid-template-columns: minmax(0, 1fr) clamp(9.5rem, 12vw, 11.5rem);
+    background: linear-gradient(172deg, #1B212A, #12161C 70%);
+    box-shadow: var(--sc-e3), var(--sc-edge), inset 0 0 0 1px rgb(255 255 255 / 0.045);
+    font-variant-numeric: tabular-nums;
+  }
+  .slip__body { padding: clamp(1.15rem, 2vw, 1.75rem) clamp(1.15rem, 2.2vw, 2rem); min-width: 0; }
+  .slip__stub { position: relative; border-inline-start: 1px dashed var(--sc-hairline-strong);
+                padding: clamp(1.15rem, 2vw, 1.75rem) var(--sc-4); min-height: 100%; }
+  .slip__stub > .slip__lbl { margin: 0; }
+  .slip__head { display: flex; justify-content: space-between; gap: var(--sc-4); font-family: var(--sc-font-mono);
+                font-size: var(--sc-t-xs); letter-spacing: 0.06em; text-transform: uppercase; color: var(--sc-ink-soft); }
+  .slip__amt { margin: var(--sc-4) 0 0; font-family: var(--sc-font-display); font-stretch: 90%; font-weight: 600;
+               font-size: clamp(2rem, 1.4rem + 2vw, 3.1rem); letter-spacing: -0.02em; line-height: 1; }
+  .slip__amt small { font-family: var(--sc-font-mono); font-size: var(--sc-t-sm); font-weight: 500; letter-spacing: 0.04em; color: var(--sc-ink-soft); margin-inline-start: 0.5rem; }
+  .slip__meta { margin: var(--sc-5) 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sc-3) var(--sc-5); }
+  .slip__meta div { display: grid; gap: 0.1rem; }
+  .slip__meta dt, .slip__lbl { font-family: var(--sc-font-mono); font-size: var(--sc-t-xs); letter-spacing: 0.05em; text-transform: uppercase; color: var(--sc-ink-soft); }
+  .slip__meta dd { margin: 0; font-size: var(--sc-t-sm); }
+  .slip__sec { margin-top: var(--sc-5); padding-top: var(--sc-4); border-top: 1px dashed var(--sc-hairline-strong); }
+  .slip__lines { list-style: none; margin: var(--sc-3) 0 0; padding: 0; display: grid; gap: 0.35rem; font-size: var(--sc-t-sm); }
+  .slip__lines li { display: grid; grid-template-columns: 1fr auto; gap: var(--sc-3); align-items: baseline;
+                    clip-path: inset(0 100% 0 0); transition: clip-path 420ms var(--sc-ease-out); }
+  [dir="rtl"] .slip__lines li { clip-path: inset(0 0 0 100%); }
+  .slip__lines li b, .slip__lines li code { font-family: var(--sc-font-mono); font-size: var(--sc-t-xs); font-weight: 500; color: var(--sc-ink-soft); }
+  .slip__lines li em { font-style: normal; font-family: var(--sc-font-mono); font-size: var(--sc-t-xs); }
+  .slip__lines li.is-total { padding-top: 0.35rem; border-top: 1px solid var(--sc-hairline); color: var(--sc-ink-soft); }
+  .slip.has-post .slip__lines li { clip-path: inset(0 0 0 0); }
+  .slip.has-post .slip__lines li:nth-child(2) { transition-delay: 120ms; }
+  .slip.has-post .slip__lines li:nth-child(3) { transition-delay: 240ms; }
+  .slip__bal { margin: var(--sc-3) 0 0; display: grid; gap: 0.35rem; font-size: var(--sc-t-sm); }
+  .slip__bal div { display: flex; justify-content: space-between; gap: var(--sc-4); }
+  .slip__bal dt { color: var(--sc-ink-soft); }
+  .slip__bal dd { margin: 0; font-family: var(--sc-font-mono); font-size: var(--sc-t-xs); transition: color 200ms var(--sc-ease-out); }
+  .slip__bal dd.is-gap { color: var(--vx-gap); }
+  .slip__gap { display: flex; justify-content: space-between; gap: var(--sc-4); margin-top: 0.35rem; padding-top: 0.35rem;
+               border-top: 1px solid var(--sc-hairline); font-size: var(--sc-t-sm); }
+  .slip__gap span:first-child { display: inline-flex; align-items: center; }
+  .slip__gap span:last-child { font-family: var(--sc-font-mono); font-size: var(--sc-t-xs); }
+  .slip__gap.is-gap { color: var(--vx-gap); }
+  .slip__gap.is-ok { color: var(--sc-ink); }
+  .slip__gap svg { width: 0.95rem; height: 0.95rem; vertical-align: -0.12rem; color: var(--sc-accent); margin-inline-end: 0.3rem; }
+
+  .stamp {
+    position: absolute; z-index: 2; pointer-events: none; white-space: nowrap;
+    display: grid; justify-items: center; gap: 0.15rem;
+    padding: 0.4rem 0.7rem 0.35rem; border: 2px solid currentColor; border-radius: 5px;
+    color: #8FB2FF; font-family: var(--sc-font-mono); font-weight: 500; font-size: var(--sc-t-xs);
+    letter-spacing: 0.14em; text-transform: uppercase; line-height: 1;
+    -webkit-mask-image: radial-gradient(130% 120% at 30% 35%, #000 55%, rgb(0 0 0 / 0.72) 78%, rgb(0 0 0 / 0.9));
+            mask-image: radial-gradient(130% 120% at 30% 35%, #000 55%, rgb(0 0 0 / 0.72) 78%, rgb(0 0 0 / 0.9));
+    opacity: 0; transform: rotate(var(--r, -6deg)) scale(1.35);
+    transition: opacity 120ms var(--sc-ease-out), transform 200ms var(--sc-ease-out);
+  }
+  .stamp small { font-size: 0.68rem; letter-spacing: 0.08em; opacity: 0.85; }
+  .stamp.on { opacity: 0.88; transform: rotate(var(--r, -6deg)) scale(1); }
+  .stamp--final { color: var(--sc-accent); font-size: var(--sc-t-sm); padding: 0.55rem 0.9rem 0.45rem; border-width: 2.5px; }
+  .stamp--final.on { opacity: 0.95; }
+  .stamp[data-k="0"] { inset-block-start: 14%; inset-inline-start: 12%; --r: 6deg; }
+  .stamp[data-k="1"] { inset-block-start: 29%; inset-inline-start: 22%; --r: -5deg; }
+  .stamp[data-k="2"] { inset-block-start: 44%; inset-inline-start: 6%;  --r: 3deg; }
+  .stamp[data-k="3"] { inset-block-start: 59%; inset-inline-start: 26%; --r: -7deg; }
+  .stamp[data-k="4"] { inset-block-start: 74%; inset-inline-start: -14%; --r: -5deg; }
+
+  /* ------------------------------------------------- ask vaultex, the peak -- */
+  .vx-ask { position: relative; padding-block: clamp(6rem, 14vh, 10rem) clamp(6rem, 14vh, 10rem); overflow: clip; }
+  .vx-ask::before { content: ""; position: absolute; left: 50%; top: 38%; width: min(80rem, 140vw); aspect-ratio: 1.6; translate: -50% -50%;
+                    pointer-events: none; z-index: 0;
+                    background: radial-gradient(closest-side, rgb(110 155 255 / 0.16), rgb(140 110 255 / 0.07) 50%, transparent 75%); }
+  .vx-ask .sc-wrap { position: relative; z-index: 1; }
+  .ax__head { text-align: center; display: grid; justify-items: center; }
+  .ax__kicker { margin: 0; display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0.85rem 0.35rem 0.4rem; border-radius: var(--sc-r-pill);
+                font-size: var(--sc-t-sm); font-weight: 600; color: var(--sc-ink);
+                background: color-mix(in oklab, var(--sc-accent) 12%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sc-accent) 35%, transparent); }
+  [dir="rtl"] .ax__kicker { padding: 0.35rem 0.4rem 0.35rem 0.85rem; }
+  .ax__spark { width: 1.6rem; height: 1.6rem; border-radius: 50%; display: grid; place-items: center; color: white;
+               background: conic-gradient(from 200deg, #4F7BFF, #8B6CFF, #3FC6E8, #4F7BFF); }
+  .ax__spark svg { width: 0.9rem; height: 0.9rem; }
+  .ax__h { margin: var(--sc-5) 0 0; font-family: var(--sc-font-display); font-weight: 680; font-stretch: 82%;
+           font-size: clamp(3.4rem, 2rem + 6vw, 8rem); line-height: 0.92; letter-spacing: -0.03em; }
+  .ax__p { margin: var(--sc-5) 0 0; max-width: 44ch; font-size: var(--sc-t-lg); line-height: 1.5; color: color-mix(in oklab, var(--sc-ink) 80%, var(--sc-ink-soft)); text-wrap: pretty; }
+
+  .ax__stage { margin-top: clamp(2.5rem, 6vh, 4.5rem); display: grid; grid-template-columns: minmax(0, 1fr) minmax(15rem, 20rem); gap: clamp(1.25rem, 3vw, 2.5rem);
+               align-items: center; max-width: 72rem; margin-inline: auto; }
+  .ax__win { position: relative; border-radius: 22px; overflow: hidden; display: grid; grid-template-rows: auto 1fr auto;
+             height: clamp(30rem, 66vh, 38rem);
+             background: linear-gradient(176deg, #151B26, #0F131B 60%);
+             box-shadow: 0 40px 90px -30px rgb(0 0 0 / 0.75), 0 0 0 1px rgb(255 255 255 / 0.07), inset 0 1px 0 rgb(255 255 255 / 0.06); }
+  .ax__bar { display: flex; align-items: center; gap: 0.75rem; padding: 0.9rem 1.1rem; border-bottom: 1px solid var(--sc-hairline); }
+  .ax__bar strong { display: block; font-weight: 650; font-size: var(--sc-t-base); }
+  .ax__bar div span { display: block; font-size: var(--sc-t-xs); color: var(--sc-ink-soft); }
+  .ax__orb { position: relative; width: 2.25rem; height: 2.25rem; border-radius: 12px; display: grid; place-items: center; color: white; flex: none;
+             background: radial-gradient(circle at 30% 25%, #7FA2FF, #3346C9); box-shadow: 0 0 0 2px rgb(140 120 255 / 0.35); }
+  .ax__orb svg { width: 1.05rem; height: 1.05rem; }
+  .ax__win.is-busy .ax__orb { animation: ax-pulse 1.2s ease-in-out infinite; }
+  @keyframes ax-pulse { 0%, 100% { box-shadow: 0 0 0 2px rgb(140 120 255 / 0.35); } 50% { box-shadow: 0 0 0 6px rgb(140 120 255 / 0.12); } }
+  .ax__dots { margin-inline-start: auto; display: flex; gap: 6px; }
+  .ax__dots i { width: 8px; height: 8px; border-radius: 50%; background: rgb(255 255 255 / 0.12); }
+
+  .ax__thread { overflow: hidden; padding: 1.25rem 1.25rem 0.5rem; display: flex; flex-direction: column; justify-content: flex-end; gap: 1rem;
+                -webkit-mask-image: linear-gradient(to bottom, transparent, #000 2.5rem); mask-image: linear-gradient(to bottom, transparent, #000 2.5rem); }
+  .ax__q { align-self: flex-end; max-width: 82%; margin: 0; padding: 0.65rem 0.95rem; border-radius: 16px 16px 5px 16px;
+           background: #3D63E6; color: white; font-size: var(--sc-t-sm); line-height: 1.45;
+           animation: ax-in 260ms var(--sc-ease-out) both; }
+  [dir="rtl"] .ax__q { border-radius: 16px 16px 16px 5px; }
+  .ax__q[dir="rtl"] { font-family: "Cairo", var(--sc-font-text); }
+  .ax__q[dir="ltr"] { font-family: "Geist", var(--sc-font-text); }
+  .ax__a { display: grid; grid-template-columns: 2rem 1fr; gap: 0.75rem; animation: ax-in 260ms var(--sc-ease-out) both; }
+  .ax__a > .ax__orb { width: 2rem; height: 2rem; border-radius: 10px; }
+  .ax__a > .ax__orb svg { width: 0.9rem; height: 0.9rem; }
+  .ax__body { min-width: 0; font-size: var(--sc-t-sm); line-height: 1.6; color: color-mix(in oklab, var(--sc-ink) 90%, var(--sc-ink-soft)); }
+  .ax__body[dir="rtl"] { font-family: "Cairo", var(--sc-font-text); }
+  .ax__body[dir="ltr"] { font-family: "Geist", var(--sc-font-text); }
+  .ax__body p { margin: 0 0 0.5rem; text-wrap: pretty; }
+  .ax__body ol, .ax__body ul { margin: 0 0 0.5rem; padding-inline-start: 1.2rem; display: grid; gap: 0.25rem; }
+  .ax__body strong { color: var(--sc-ink); font-weight: 650; }
+  .ax__body .w { opacity: 0; transition: opacity 160ms var(--sc-ease-out); }
+  .ax__body .w.on { opacity: 1; }
+  .ax__think { display: flex; align-items: center; gap: 0.55rem; padding-top: 0.35rem; font-size: var(--sc-t-sm); color: var(--sc-ink-soft); }
+  .ax__think i { width: 0.85rem; height: 0.85rem; border-radius: 50%; border: 2px solid color-mix(in oklab, var(--sc-accent) 30%, transparent);
+                 border-top-color: var(--sc-accent); animation: ax-spin 0.8s linear infinite; }
+  @keyframes ax-spin { to { transform: rotate(360deg); } }
+  @keyframes ax-in { from { opacity: 0; transform: translate3d(0, 8px, 0); } to { opacity: 1; transform: none; } }
+  .ax__checked { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin-top: 0.4rem; font-size: var(--sc-t-xs); color: var(--sc-ink-soft); }
+  .ax__checked svg { width: 0.85rem; height: 0.85rem; color: #4BD49A; }
+  .ax__checked span { padding: 0.12rem 0.5rem; border-radius: 6px; background: rgb(255 255 255 / 0.06); }
+  .ax__fade { opacity: 0; transform: translate3d(0, 6px, 0); transition: opacity 300ms var(--sc-ease-out), transform 300ms var(--sc-ease-out); }
+  .ax__fade.on { opacity: 1; transform: none; }
+  .ax__chart { margin: 0.6rem 0 0.2rem; padding: 0.85rem 0.9rem 0.7rem; border-radius: 14px; background: rgb(255 255 255 / 0.035); box-shadow: inset 0 0 0 1px var(--sc-hairline); }
+  .ax__chart h4 { margin: 0 0 0.6rem; font-size: var(--sc-t-xs); font-weight: 600; color: var(--sc-ink); }
+  .ax__cols { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0.6rem; align-items: end; height: 7.5rem; }
+  .ax__col { display: grid; grid-template-rows: auto 1fr auto; justify-items: center; gap: 0.3rem; height: 100%; }
+  .ax__col b { font-family: var(--sc-font-mono); font-size: 0.68rem; font-weight: 500; color: var(--sc-ink); }
+  .ax__col i { align-self: end; width: 100%; max-width: 3rem; border-radius: 6px 6px 2px 2px; height: var(--h, 50%);
+               background: linear-gradient(180deg, #7FA2FF, #4F6FEA); transform-origin: bottom; transform: scaleY(0);
+               transition: transform 700ms var(--sc-ease-out); }
+  .ax__col.is-neg i { background: linear-gradient(180deg, #F0A24B, #C9762A); }
+  .ax__chart.on .ax__col i { transform: scaleY(1); }
+  .ax__chart.on .ax__col:nth-child(2) i { transition-delay: 70ms; } .ax__chart.on .ax__col:nth-child(3) i { transition-delay: 140ms; }
+  .ax__chart.on .ax__col:nth-child(4) i { transition-delay: 210ms; } .ax__chart.on .ax__col:nth-child(5) i { transition-delay: 280ms; }
+  .ax__col span { font-size: 0.68rem; color: var(--sc-ink-soft); text-align: center; line-height: 1.2; }
+  .ax__draft { margin: 0.6rem 0 0.2rem; border-radius: 14px; overflow: hidden; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sc-accent) 45%, transparent);
+               background: color-mix(in oklab, var(--sc-accent) 6%, transparent); }
+  .ax__draft header { display: flex; justify-content: space-between; align-items: center; padding: 0.55rem 0.85rem; font-size: var(--sc-t-xs); font-weight: 600;
+                      border-bottom: 1px solid var(--sc-hairline); background: rgb(255 255 255 / 0.03); }
+  .ax__draft header em { font-style: normal; font-size: 0.66rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.15rem 0.5rem; border-radius: 99px;
+                         background: rgb(255 255 255 / 0.08); color: var(--sc-ink-soft); }
+  .ax__draft header em.is-made { background: rgb(75 212 154 / 0.16); color: #4BD49A; }
+  .ax__draft > div { padding: 0.75rem 0.85rem 0.85rem; display: grid; gap: 0.6rem; }
+  .ax__amt { font-family: var(--sc-font-display); font-stretch: 90%; font-weight: 650; font-size: 1.6rem; line-height: 1; letter-spacing: -0.01em; }
+  .ax__draft dl { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem 1rem; font-size: var(--sc-t-xs); }
+  .ax__draft dt { color: var(--sc-ink-soft); }
+  .ax__draft dd { margin: 0; color: var(--sc-ink); }
+  .ax__draft .ax__row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; font-size: 0.7rem; color: var(--sc-ink-soft); }
+  .ax__btn { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.45rem 0.8rem; border-radius: 9px; font-size: var(--sc-t-xs); font-weight: 600;
+             background: var(--sc-accent); color: var(--sc-accent-ink); transition: transform 140ms var(--sc-ease-out), background-color 200ms; }
+  .ax__btn.is-press { transform: scale(0.94); }
+  .ax__btn.is-done { background: #4BD49A; color: #052615; }
+
+  .ax__input { display: flex; align-items: center; gap: 0.5rem; margin: 0.75rem; padding: 0.55rem 0.55rem 0.55rem 0.95rem; border-radius: 16px;
+               background: rgb(255 255 255 / 0.04); box-shadow: inset 0 0 0 1px var(--sc-hairline-strong); min-height: 3rem;
+               font-size: var(--sc-t-sm); color: var(--sc-ink); }
+  [dir="rtl"] .ax__input { padding: 0.55rem 0.95rem 0.55rem 0.55rem; }
+  .ax__input [data-ax="typing"] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ax__input [data-ax="typing"]:empty::before { content: attr(data-ph); color: var(--sc-ink-soft); }
+  .ax__caret { width: 2px; height: 1.1rem; background: var(--sc-accent); animation: ax-blink 1s steps(1) infinite; flex: none; }
+  @keyframes ax-blink { 50% { opacity: 0; } }
+  .ax__mic, .ax__send { margin-inline-start: auto; width: 2.1rem; height: 2.1rem; border-radius: 11px; display: grid; place-items: center; flex: none; color: var(--sc-ink-soft); }
+  .ax__mic + .ax__send { margin-inline-start: 0; }
+  .ax__send { background: linear-gradient(135deg, #4F7BFF, #6E5BFF); color: white; opacity: 0.45; transition: opacity 160ms, transform 140ms; }
+  .ax__send.is-ready { opacity: 1; }
+  .ax__send.is-press { transform: scale(0.9); }
+  .ax__mic svg, .ax__send svg { width: 1.05rem; height: 1.05rem; }
+
+  .ax__qs { display: grid; gap: 0.6rem; }
+  .ax__qs button { appearance: none; border: 0; cursor: pointer; font: inherit; text-align: start; display: grid; grid-template-columns: 1.7rem 1fr; gap: 0.7rem; align-items: start;
+                   padding: 0.85rem 0.95rem; border-radius: 14px; background: rgb(255 255 255 / 0.025); color: color-mix(in oklab, var(--sc-ink) 82%, var(--sc-ink-soft));
+                   box-shadow: inset 0 0 0 1px var(--sc-hairline); font-size: var(--sc-t-sm); line-height: 1.4;
+                   transition: background-color 180ms var(--sc-ease-out), box-shadow 180ms var(--sc-ease-out), color 180ms; position: relative; overflow: hidden; }
+  .ax__qs button b { width: 1.7rem; height: 1.7rem; border-radius: 8px; display: grid; place-items: center; font-family: var(--sc-font-mono); font-size: 0.72rem; font-weight: 500;
+                     background: rgb(255 255 255 / 0.06); color: var(--sc-ink-soft); }
+  .ax__qs button::after { content: ""; position: absolute; inset: auto 0 0 0; height: 2px; background: var(--sc-accent); transform-origin: left; transform: scaleX(var(--t, 0)); }
+  [dir="rtl"] .ax__qs button::after { transform-origin: right; }
+  .ax__qs button[aria-pressed="true"] { background: color-mix(in oklab, var(--sc-accent) 12%, transparent); color: var(--sc-ink);
+                                         box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sc-accent) 50%, transparent); }
+  .ax__qs button[aria-pressed="true"] b { background: var(--sc-accent); color: var(--sc-accent-ink); }
+  @media (hover: hover) and (pointer: fine) { .ax__qs button[aria-pressed="false"]:hover { background: rgb(255 255 255 / 0.05); color: var(--sc-ink); } }
+  .ax__qs button:focus-visible { outline: 2px solid var(--sc-accent); outline-offset: 2px; }
+
+  .ax__promises { list-style: none; margin: clamp(3rem, 7vh, 4.5rem) auto 0; padding: 0; max-width: 72rem;
+                  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(1.25rem, 3vw, 2.5rem); }
+  .ax__promises li { display: grid; gap: 0.35rem; padding-top: var(--sc-4); border-top: 1px solid var(--sc-hairline-strong); }
+  .ax__promises strong { font-size: var(--sc-t-lg); font-weight: 650; color: var(--sc-ink); }
+  .ax__promises span { color: var(--sc-ink-soft); text-wrap: pretty; }
+  .ax__note { margin: var(--sc-6) auto 0; max-width: 72rem; font-size: var(--sc-t-xs); color: var(--sc-ink-soft); }
+  .ax__note a { color: var(--sc-ink); text-underline-offset: 0.2em; text-decoration-color: color-mix(in oklab, var(--sc-accent) 70%, transparent); margin-inline-start: 0.35rem; }
+  :root[lang="ar"] :is(.ax__h) { letter-spacing: 0; font-stretch: normal; font-weight: 800; line-height: 1.1; }
+
+  /* --------------------------------------------------------------- faq -- */
+  .vx-faq { padding-block: clamp(5rem, 12vh, 9rem); }
+  .fq { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: clamp(2rem, 5vw, 6rem); align-items: start; }
+  .fq__head { position: sticky; top: calc(var(--vx-bar-h) + 2rem); }
+  .fq__head .vx-cta { margin-top: var(--sc-6); }
+  .fq__list { border-top: 1px solid var(--sc-hairline-strong); }
+  .fq__list details { border-bottom: 1px solid var(--sc-hairline-strong); }
+  .fq__list summary {
+    list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: var(--sc-5);
+    min-height: 3.5rem; padding: var(--sc-4) 0; font-weight: 600; font-size: var(--sc-t-base);
+  }
+  .fq__list summary::-webkit-details-marker { display: none; }
+  .fq__list summary svg { width: 1.1rem; height: 1.1rem; flex: none; color: var(--sc-ink-soft); transition: transform 200ms var(--sc-ease-out); }
+  .fq__list details[open] summary svg { transform: rotate(45deg); color: var(--sc-ink); }
+  .fq__list summary:focus-visible { outline-offset: 4px; border-radius: 4px; }
+  .fq__a { padding: 0 0 var(--sc-5); }
+  .fq__a p { margin: 0; max-width: 60ch; color: color-mix(in oklab, var(--sc-ink) 80%, var(--sc-ink-soft)); text-wrap: pretty; }
+  details[open] .fq__a { animation: vx-open 260ms var(--sc-ease-out); }
+  @keyframes vx-open { from { opacity: 0; transform: translate3d(0, -4px, 0); } to { opacity: 1; transform: none; } }
+
+  /* ---------------------------------------------------------- phones -- */
+  @media (max-width: 899px), (max-aspect-ratio: 23/20) {
+    .vx-open { top: calc(var(--vx-bar-h) + 0.75rem); translate: none; width: auto; inset-inline: var(--sc-gutter); }
+    .vx-h1 { font-size: clamp(2.1rem, 9.6vw, 4.2rem); }
+    .vx-open p { margin-top: var(--sc-3); font-size: var(--sc-t-sm); max-width: 40ch; }
+    .vx-open .vx-cta { display: none; }
+    .vx-colscrim { inset: 0 0 auto 0; height: 48%;
+                   background: linear-gradient(180deg, color-mix(in oklab, var(--sc-canvas) 78%, transparent), color-mix(in oklab, var(--sc-canvas) 40%, transparent) 60%, transparent); }
+    .vx-close-copy { top: calc(var(--vx-bar-h) + 0.75rem); translate: none; width: auto; inset-inline: var(--sc-gutter); }
+    .vx-close-copy h2 { font-size: clamp(2rem, 8.6vw, 3.6rem); }
+    .vx-close-copy p { margin-top: var(--sc-3); font-size: var(--sc-t-sm); }
+    .vx-foot { justify-content: center; text-align: center; padding-block: var(--sc-3) calc(var(--sc-3) + env(safe-area-inset-bottom)); }
+    .vx-foot .vx-foot__line { display: none; }
+  }
+  @media (max-width: 860px) {
+    .vx-tension h2 { grid-column: 1 / -1; }
+    .vx-tension p { grid-column: 1 / -1; margin-top: var(--sc-5); }
+    .rc { grid-template-columns: 1fr; gap: var(--sc-5); align-content: center; padding-top: calc(var(--vx-bar-h) + 0.5rem); padding-bottom: 1.25rem; }
+    .rc__copy h2 { font-size: clamp(1.6rem, 6.4vw, 2.4rem); }
+    .rc__copy > p { display: none; }
+    .rc__meter { margin-top: var(--sc-4); gap: var(--sc-5); }
+    .rc__meter dd { font-size: var(--sc-t-lg); }
+    .rc__log { margin-top: var(--sc-3); min-height: calc(3 * 1.95rem); }
+    .rc__log li { grid-template-columns: 3.9rem 1fr auto; font-size: var(--sc-t-xs); }
+    .rc__log li:not(.recent) { display: none; }
+    .rc__done { margin-top: var(--sc-3); font-size: var(--sc-t-sm); }
+    .rc__wall { grid-template-columns: repeat(6, minmax(0, 1fr)); padding: 0.5rem; }
+    .bx__no { font-size: 8px; }
+    .bx__amt { font-size: 7.5px; }
+    .pt__row { grid-template-columns: 1fr; gap: var(--sc-3); }
+    .vx-cta--bar { min-height: 2.5rem; padding: 0 0.95rem; }
+    .vx-lang { min-height: 2.5rem; padding: 0 0.8rem; }
+    .vx-bar__end { gap: var(--sc-2); }
+  }
+  @media (max-width: 440px) {
+    .vx-mark span { display: none; }
+  }
+  /* the explanatory acts on phones and tablets */
+  @media (max-width: 960px) {
+    .hw { grid-template-columns: 1fr; gap: var(--sc-4); align-content: center; padding-top: calc(var(--vx-bar-h) + 0.5rem); padding-bottom: 1rem; }
+    .hw .vx-h2 { font-size: clamp(1.6rem, 6.4vw, 2.4rem); }
+    .hw .vx-lede { display: none; }
+    .hw__steps { margin-top: var(--sc-4); display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.3rem; }
+    .hw__step, .hw__step:last-child { display: grid; grid-template-columns: 1fr; justify-items: start; gap: 0.35rem; padding: 0.5rem 0 0; border: 0;
+                                      border-top: 2px solid var(--sc-hairline-strong); }
+    .hw__step.is-done, .hw__step.is-on { border-top-color: var(--sc-accent); }
+    .hw__step i { display: none; }
+    .hw__step b { font-size: var(--sc-t-xs); }
+    .hw__step span { display: none; }
+    .hw__now { display: block; margin: var(--sc-3) 0 0; min-height: 3em; font-size: var(--sc-t-sm); line-height: 1.5; color: color-mix(in oklab, var(--sc-ink) 84%, var(--sc-ink-soft)); }
+    .slip { grid-template-columns: 1fr; }
+    .slip__body { padding: 1rem 1.1rem 0.75rem; }
+    .slip__stub { border-inline-start: 0; border-top: 1px dashed var(--sc-hairline-strong); min-height: 6.4rem; padding: 0.5rem 1.1rem; }
+    .slip__meta div:nth-child(n+3) { display: none; }
+    .stamp[data-k="0"] { inset-block-start: 26%; inset-inline-start: 3%; }
+    .stamp[data-k="1"] { inset-block-start: 28%; inset-inline-start: 31%; }
+    .stamp[data-k="2"] { inset-block-start: 25%; inset-inline-start: 57%; }
+    .stamp[data-k="3"] { inset-block-start: 62%; inset-inline-start: 6%; }
+    .stamp[data-k="4"] { inset-block-start: 60%; inset-inline-start: 33%; }
+    .slip__amt { margin-top: var(--sc-3); font-size: 1.9rem; }
+    .slip__meta { margin-top: var(--sc-3); gap: var(--sc-2) var(--sc-4); }
+    .slip__sec { margin-top: var(--sc-3); padding-top: var(--sc-3); }
+    .slip__lines li { font-size: var(--sc-t-xs); }
+    .stamp { font-size: 0.6rem; padding: 0.25rem 0.45rem 0.2rem; letter-spacing: 0.08em; gap: 0.05rem; border-width: 1.5px; }
+    .stamp small { font-size: 0.56rem; }
+    .stamp--final { font-size: var(--sc-t-xs); }
+
+    .fq { grid-template-columns: 1fr; }
+    .fq__head { position: static; }
+    .ax__stage { grid-template-columns: 1fr; }
+    .ax__qs { grid-template-columns: repeat(2, minmax(0, 1fr)); order: -1; gap: 0.5rem; }
+    .ax__qs button { padding: 0.65rem 0.7rem; font-size: var(--sc-t-xs); grid-template-columns: 1.4rem 1fr; gap: 0.5rem; }
+    .ax__qs button b { width: 1.4rem; height: 1.4rem; }
+    .ax__win { height: min(36rem, 74svh); }
+    .ax__promises { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 960px) and (max-height: 780px) {
+    .slip__meta { display: none; }
+    .slip__lines li.is-total { display: none; }
+    .hw .vx-h2 { font-size: 1.5rem; }
+  }
+  @media (max-height: 700px) and (max-width: 860px) {
+    .rc__copy h2 { font-size: 1.5rem; }
+    .rc__wall { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 3px; }
+    .bx__no { display: none; }
+    .bx__amt { left: 6%; bottom: 8%; font-size: 6.5px; }
+    .rc__log { min-height: calc(2 * 1.95rem); }
+    .rc__log li:not(.recent):not(:last-child) { display: none; }
+  }
+
+  /* ---------------------------------------------------- reduced motion -- */
+  @media (prefers-reduced-motion: reduce) {
+    .vx-still { display: block; position: relative; height: 100svh; overflow: clip; }
+    .vx-still img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; max-width: none; }
+    .vx-still .vx-inside { z-index: 3; }
+    .vx-still .vx-inside-scrim { opacity: 1; }
+    .vx-hero .vx-inside, .vx-hero .vx-inside-scrim { display: none; }
+    .rc__log li, .bx__bolt { transition: none; transform: none; }
+    .stamp, .stamp.on { transform: rotate(var(--r, -6deg)); transition: opacity 200ms linear; }
+    .slip__lines li { transition: none; }
+    .ax__col i, .ax__fade, .ax__q, .ax__a { transition: none; animation: none; }
+    .ax__win.is-busy .ax__orb, .ax__caret, .ax__think i { animation: none; }
+    details[open] .fq__a { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="sc-grain" aria-hidden="true"></div>
+
+<header class="vx-bar">
+  <a class="vx-mark" href="#vault" data-i18n-aria="markLabel" aria-label="Vaultex, back to top">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="12" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="16" cy="16" r="7.2" fill="none" stroke="currentColor" stroke-opacity=".45" stroke-width="1.2"/><g fill="currentColor"><circle cx="16" cy="6.4" r="1.1"/><circle cx="25.6" cy="16" r="1.1"/><circle cx="16" cy="25.6" r="1.1"/><circle cx="6.4" cy="16" r="1.1"/></g><circle cx="16" cy="16" r="2.2" fill="#6E9BFF"/></svg>
+    <span lang="en" dir="ltr">Vaultex</span>
+  </a>
+  <nav class="vx-nav" data-i18n-aria="navLabel" aria-label="Sections">
+    <a href="#how" data-i18n="navHow">How it works</a>
+    <a href="#ask" data-i18n="navAsk">Ask Vaultex</a>
+    <a href="#reconcile" data-i18n="navRec">Checking</a>
+    <a href="#faq" data-i18n="navFaq">Questions</a>
+  </nav>
+  <div class="vx-bar__end">
+    <button type="button" class="vx-lang" data-lang-switch lang="ar" aria-label="عرض الصفحة بالعربية">العربية</button>
+    <a class="vx-cta vx-cta--bar" href="https://ai-acounting-app.vercel.app/login" data-demo data-i18n="cta">Open the demo</a>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- 1 · AWE. Layered vault scene on a pinned stage. Planes, back to front:
+       hall, glow, inside copy, wall (with a real alpha hole), light spill,
+       seam, opening copy, door shadow, door (metal rotates, light does not),
+       near pillars, dust. One camera: the door rolls aside, then we dolly
+       through the doorway. In Arabic the whole scene mirrors. -->
+  <section id="vault" class="vx-hero" data-sc-act="pin" data-sc-span="3.4" data-sc-drift="#0B0E12">
+    <div data-sc-stage class="vx-stage" data-vault="hero" data-sc-verify-state="">
+      <picture>
+        <source media="(max-width: 899px), (max-aspect-ratio: 23/20)" srcset="assets/poster-m.webp">
+        <img class="vx-poster" src="assets/poster.webp" alt="" width="1920" height="1080" fetchpriority="high">
+      </picture>
+      <div class="vx-plane vx-hall" aria-hidden="true"><img alt="" data-src="assets/hall.webp" data-src-m="assets/hall-m.webp"></div>
+      <div class="vx-plane vx-glow" aria-hidden="true"></div>
+      <div class="vx-inside-scrim" aria-hidden="true"></div>
+      <div class="vx-inside" data-sc-cue="0.56 0.98 0.14 0.1" data-sc-rise="0">
+        <h2 data-i18n="insideH">Inside, every client has their own box.</h2>
+        <p data-i18n="insideP">Every client, every partner, every currency. Each one with its own balance and its own history.</p>
+      </div>
+      <div class="vx-plane vx-wall" aria-hidden="true"><img alt="" data-src="assets/wall.webp" data-src-m="assets/wall-m.webp"></div>
+      <div class="vx-plane vx-spill" aria-hidden="true"></div>
+      <div class="vx-plane vx-seam" aria-hidden="true"><i></i></div>
+      <div class="vx-colscrim" aria-hidden="true"></div>
+      <div class="vx-open" data-sc-cue="0 0.42 0 0.22" data-sc-rise="0">
+        <h1 class="vx-h1" data-i18n="h1">All your money. One vault.</h1>
+        <p data-i18n="heroP">Vaultex keeps the books for forex brokers. It checks every account against MT5 and answers your questions in plain words. In English and Arabic.</p>
+        <a class="vx-cta" href="https://ai-acounting-app.vercel.app/login" data-demo><span data-i18n="cta">Open the demo</span>
+          <svg class="vx-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+      </div>
+      <div class="vx-plane vx-shadow" aria-hidden="true"></div>
+      <div class="vx-plane vx-door" aria-hidden="true">
+        <img class="vx-door__metal" alt="" data-src="assets/door.webp">
+        <img class="vx-door__light" alt="" data-src="assets/door-light.webp">
+      </div>
+      <div class="vx-plane vx-pillar vx-pillar--l" aria-hidden="true"><i></i></div>
+      <div class="vx-plane vx-pillar vx-pillar--r" aria-hidden="true"><i></i></div>
+      <div class="vx-plane vx-dust" aria-hidden="true"><img alt="" data-src="assets/dust.webp"></div>
+      <div class="vx-floor" aria-hidden="true"></div>
+    </div>
+  </section>
+
+  <!-- Reduced motion only: the hero's second beat as a still frame, so nothing
+       essential lives inside a camera move. -->
+  <section class="vx-still" data-i18n-aria="stillLabel" aria-label="Inside the vault">
+    <img src="assets/hall.webp" data-i18n-alt="hallAlt" alt="A long vault corridor lined with steel safe-deposit boxes, lit warm at the far end." loading="lazy">
+    <div class="vx-inside-scrim" aria-hidden="true"></div>
+    <div class="vx-inside">
+      <h2 data-i18n="insideH">Inside, every client has their own box.</h2>
+      <p data-i18n="insideP">Every client, every partner, every currency. Each one with its own balance and its own history.</p>
+    </div>
+  </section>
+
+  <!-- 2 · UNEASE. Plain ground. The problem, named once. -->
+  <section class="vx-tension" data-sc-act="flow" data-sc-drift="#0D1116">
+    <div class="sc-wrap" data-sc-in data-sc-stagger="80">
+      <h2 data-i18n="tensionH">At the end of the month, MT5 says one number. Your books say <em>another</em>.</h2>
+      <p data-i18n="tensionP">Maybe a deposit was never written down. Maybe a fee was counted twice. Finding it can take a big spreadsheet and a long night.</p>
+    </div>
+  </section>
+
+  <!-- 3 · CLARITY. One deposit, followed from request to a locked account.
+       The slip is the ground (always present); each stage stamps it, writes
+       both sides in the books, and moves the balances. -->
+  <section id="how" class="vx-how" data-sc-act="pin" data-sc-span="2.6" data-sc-drift="#0C1015">
+    <div data-sc-stage class="sc-stage" data-sc-verify-state="">
+      <div class="hw">
+        <div class="hw__copy">
+          <h2 class="vx-h2" data-i18n="howH">Watch one deposit go through.</h2>
+          <p class="vx-lede" data-i18n="howP">All money moves in the same five steps. Each step leaves a stamp you can check later.</p>
+          <ol class="hw__steps" data-how="steps">
+            <li class="hw__step"><i></i><b data-i18n="howS1">Asked</b><span data-i18n="howS1p">A client asks for it in their app, or your team types it in.</span></li>
+            <li class="hw__step"><i></i><b data-i18n="howS2">Checked</b><span data-i18n="howS2p">A second person checks the money really arrived, then says OK.</span></li>
+            <li class="hw__step"><i></i><b data-i18n="howS3">Sent</b><span data-i18n="howS3p">The money is added on MT5. For a moment, MT5 and the books are different.</span></li>
+            <li class="hw__step"><i></i><b data-i18n="howS4">Written down</b><span data-i18n="howS4p">Vaultex writes it in the books on both sides, so nothing can go missing.</span></li>
+            <li class="hw__step"><i></i><b data-i18n="howS5">Matched</b><span data-i18n="howS5p">At the end of the day, MT5 and the books say the same. The account is locked.</span></li>
+          </ol>
+          <p class="hw__now" data-how="now" aria-hidden="true"></p>
+        </div>
+        <div class="hw__desk">
+          <article class="slip" data-how="slip" data-i18n-aria="slipLabel" aria-label="Sample deposit slip">
+            <div class="slip__body">
+            <div class="slip__head"><span data-i18n="slipKind">Deposit · sample</span><span dir="ltr">REQ-2026-0112</span></div>
+            <p class="slip__amt" dir="ltr">5,000.00<small>USD</small></p>
+            <dl class="slip__meta">
+              <div><dt data-i18n="slipClient">Client</dt><dd>Sophia Chen</dd></div>
+              <div><dt data-i18n="slipAcct">MT5 account</dt><dd dir="ltr">50233</dd></div>
+              <div><dt data-i18n="slipMethod">Paid by</dt><dd data-i18n="slipBank">Bank transfer</dd></div>
+              <div><dt data-i18n="slipProof">Receipt</dt><dd dir="ltr">WT-2026-1009</dd></div>
+            </dl>
+            <div class="slip__sec">
+              <p class="slip__lbl" style="margin:0"><span data-i18n="slipJournal">Written in the books</span> <span dir="ltr">#4471</span></p>
+              <ul class="slip__lines">
+                <li><span data-i18n="slipSeg">Money in the bank</span><em dir="ltr">+5,000.00</em></li>
+                <li><span data-i18n="slipPay">Money we hold for Sophia</span><em dir="ltr">+5,000.00</em></li>
+                <li class="is-total"><span data-i18n="slipBal">Both sides are equal</span><em dir="ltr">✓</em></li>
+              </ul>
+            </div>
+            <div class="slip__sec">
+              <p class="slip__lbl" style="margin:0" data-i18n="slipAcctBal">Account 50233</p>
+              <dl class="slip__bal">
+                <div><dt data-i18n="slipMt5">On MT5</dt><dd dir="ltr" data-how="mt5">12,480.00</dd></div>
+                <div><dt data-i18n="slipBook">In the books</dt><dd dir="ltr" data-how="book">12,480.00</dd></div>
+              </dl>
+              <p class="slip__gap" data-how="gap"><span data-how="gapLabel" data-i18n="slipDiff">Difference</span><span dir="ltr" data-how="gapAmt">0.00</span></p>
+            </div>
+            </div>
+            <div class="slip__stub">
+            <p class="slip__lbl" data-i18n="slipOffice">Stamps</p>
+            <span class="stamp" data-k="0" aria-hidden="true"><span data-i18n="stamp1">Asked</span><small dir="ltr">09:12</small></span>
+            <span class="stamp" data-k="1" aria-hidden="true"><span data-i18n="stamp2">OK given</span><small dir="ltr">09:20</small></span>
+            <span class="stamp" data-k="2" aria-hidden="true"><span data-i18n="stamp3">Sent on MT5</span><small dir="ltr">09:31</small></span>
+            <span class="stamp" data-k="3" aria-hidden="true"><span data-i18n="stamp4">Written down</span><small dir="ltr">JV-4471</small></span>
+            <span class="stamp stamp--final" data-k="4" aria-hidden="true"><span data-i18n="stamp5">Matched · locked</span><small dir="ltr">EOD 2026-10-09</small></span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 · DELIGHT, the peak. Ask Vaultex, shown as the real panel from the
+       app. Four short scenes play when the window comes into view: a briefing,
+       a chart, a drafted request, and a question in the other language. The
+       answers are sample answers from the demo company and say so. -->
+  <section id="ask" class="vx-ask" data-sc-act="flow" data-sc-drift="#0E1320">
+    <div class="sc-wrap">
+      <header class="ax__head" data-sc-in data-sc-stagger="80">
+        <p class="ax__kicker"><span class="ax__spark" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M10 2.5l1.6 4.3 4.4 1.6-4.4 1.6L10 14.3 8.4 10 4 8.4l4.4-1.6zM15.5 13l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z" fill="currentColor"/></svg></span><span data-i18n="akName">Ask Vaultex</span></p>
+        <h2 class="ax__h" data-i18n="akH">Just ask.</h2>
+        <p class="ax__p" data-i18n="akP">A money helper lives inside Vaultex. Ask it anything in English or Arabic, by typing or talking. It reads your books and answers in simple words.</p>
+      </header>
+
+      <div class="ax__stage">
+        <div class="ax__win" data-ax="win">
+          <div class="ax__bar">
+            <span class="ax__orb" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M10 2.5l1.6 4.3 4.4 1.6-4.4 1.6L10 14.3 8.4 10 4 8.4l4.4-1.6zM15.5 13l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z" fill="currentColor"/></svg></span>
+            <div><strong data-i18n="akName">Ask Vaultex</strong><span data-i18n="akSub">Reads your books. Never moves money on its own.</span></div>
+            <span class="ax__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          </div>
+          <div class="ax__thread" data-ax="thread" aria-live="polite"></div>
+          <div class="ax__input" aria-hidden="true">
+            <span data-ax="typing"></span><i class="ax__caret"></i>
+            <span class="ax__mic"><svg viewBox="0 0 20 20"><rect x="7.5" y="3" width="5" height="9" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 9.5a5 5 0 0 0 10 0M10 14.5V17" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+            <span class="ax__send"><svg viewBox="0 0 20 20"><path d="M10 15V5M5.5 9.5 10 5l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          </div>
+        </div>
+        <div class="ax__qs" role="group" data-i18n-aria="akQs" aria-label="Try a question">
+          <button type="button" aria-pressed="false" data-q="brief"><b>1</b><span data-i18n="akQ1">Brief me on today. What needs me first?</span></button>
+          <button type="button" aria-pressed="false" data-q="chart"><b>2</b><span data-i18n="akQ2">Who are our 5 biggest clients? Show a chart.</span></button>
+          <button type="button" aria-pressed="false" data-q="draft"><b>3</b><span data-i18n="akQ3">Get a $500 deposit ready for Sami Haddad.</span></button>
+          <button type="button" aria-pressed="false" data-q="other"><b>4</b><span data-i18n="akQ4">Now ask in Arabic.</span></button>
+        </div>
+      </div>
+
+      <ul class="ax__promises" data-sc-in data-sc-stagger="90">
+        <li><strong data-i18n="akF1h">It shows its work.</strong><span data-i18n="akF1">Every answer lists the records it checked, so you can check them too.</span></li>
+        <li><strong data-i18n="akF2h">It draws the picture.</strong><span data-i18n="akF2">Ask for a chart and it makes one from your real numbers.</span></li>
+        <li><strong data-i18n="akF3h">It gets things ready. You decide.</strong><span data-i18n="akF3">It can fill in a money request for you. Nothing moves until two people say OK.</span></li>
+      </ul>
+      <p class="ax__note"><span data-i18n="akNote">These are sample answers from the demo company. In the app, the answers come from your own books.</span> <a href="https://ai-acounting-app.vercel.app/login" data-demo data-i18n="akTry">Try it in the demo</a></p>
+    </div>
+  </section>
+
+  <!-- 5 · RELIEF. The signature: the deposit boxes are accounts, and scroll
+       runs a reconciliation pass over a sample book. Real logic on labelled
+       sample data, computed below in the page script. -->
+  <section id="reconcile" class="vx-recon" data-sc-act="pin" data-sc-span="2.9" data-sc-drift="#0B0F14">
+    <div data-sc-stage class="sc-stage" data-sc-verify-state="">
+      <div class="rc">
+        <div class="rc__copy">
+          <h2 data-i18n="rcH">Every night, Vaultex opens every box and checks it against MT5.</h2>
+          <p data-i18n="rcP">Your books on one side, MT5 on the other, one client at a time. If they match, the box locks. If not, Vaultex shows you why.</p>
+          <dl class="rc__meter">
+            <div><dt data-i18n="rcChecked">Checked</dt><dd dir="ltr"><span data-rc="checked">0</span>/48</dd></div>
+            <div><dt data-i18n="rcGaps">Not matching</dt><dd dir="ltr" data-rc="gapsWrap"><span data-rc="gaps">0</span></dd></div>
+            <div><dt data-i18n="rcNet">Difference</dt><dd dir="ltr" data-rc="netWrap"><span data-rc="net">0.00</span></dd></div>
+          </dl>
+          <ol class="rc__log" data-rc="log" data-i18n-aria="rcLog" aria-label="Reconciliation log"></ol>
+          <p class="rc__done" data-rc="done"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="9" width="12" height="8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9" fill="none" stroke="currentColor" stroke-width="1.6"/></svg><span data-i18n="rcDone">48 of 48 match. Your books equal MT5.</span></p>
+        </div>
+        <div class="rc__wall-wrap">
+          <p class="rc__label"><span data-i18n="rcSample">Sample · 48 client accounts</span><span data-i18n="rcVs">Books vs MT5, in USD</span></p>
+          <ul class="rc__wall" data-rc="wall" aria-hidden="true"></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 · BELONGING. Three doors, and the same rows in the other language. -->
+  <section class="vx-portals" data-sc-act="flow" data-sc-drift="#0C1015" id="portals">
+    <div class="sc-wrap">
+      <div class="pt__head">
+        <h2 data-sc-in data-i18n="ptH">One app. Three doors.</h2>
+        <div class="pt__toggle" role="group" data-i18n-aria="ptToggle" aria-label="Language of the portal list">
+          <button type="button" aria-pressed="true" data-lang="en" lang="en">English</button>
+          <button type="button" aria-pressed="false" data-lang="ar" lang="ar">العربية</button>
+        </div>
+      </div>
+      <div class="pt__stack">
+        <div class="pt__layer" lang="en" dir="ltr" data-pt="en">
+          <ul class="pt__rows">
+            <li class="pt__row"><h3>Your team</h3><ul><li>All the books</li><li>Money requests and checks</li><li>Close the day and reports</li><li>Ask Vaultex</li></ul></li>
+            <li class="pt__row"><h3>Clients</h3><ul><li>Their balance</li><li>Their trades and profit</li><li>Their statements</li><li>Ask to add or take out money</li></ul></li>
+            <li class="pt__row"><h3>Partners</h3><ul><li>What they earned</li><li>The clients they brought</li><li>Ask to get paid</li><li>Their own sub-partners</li></ul></li>
+          </ul>
+        </div>
+        <div class="pt__layer" lang="ar" dir="rtl" data-pt="ar" aria-hidden="true">
+          <ul class="pt__rows">
+            <li class="pt__row"><h3>فريقك</h3><ul><li>كل الدفاتر</li><li>طلبات المال والمطابقة</li><li>إغلاق اليوم والتقارير</li><li>اسأل فولتكس</li></ul></li>
+            <li class="pt__row"><h3>الزبائن</h3><ul><li>رصيدهم</li><li>صفقاتهم وأرباحهم</li><li>كشوف حساباتهم</li><li>طلب إضافة المال أو سحبه</li></ul></li>
+            <li class="pt__row"><h3>الشركاء</h3><ul><li>ما ربحوه</li><li>الزبائن الذين أحضروهم</li><li>طلب استلام أجرهم</li><li>شركاؤهم الفرعيون</li></ul></li>
+          </ul>
+        </div>
+      </div>
+      <p class="pt__note" data-sc-in data-i18n="ptNote">Every screen works in English and Arabic, and installs like an app on a computer or a phone.</p>
+    </div>
+  </section>
+
+  <!-- 7 · CERTAINTY. Plain answers. Every claim traces to the app:
+       mt5.bridge.ts, journal.service.ts rules, AskVaultexPanel, roles. -->
+  <section id="faq" class="vx-faq" data-sc-act="flow" data-sc-drift="#0D1116">
+    <div class="sc-wrap fq">
+      <div class="fq__head" data-sc-in data-sc-stagger="70">
+        <h2 class="vx-h2" data-i18n="fqH">Simple answers.</h2>
+        <p class="vx-lede" data-i18n="fqP">What people ask us first.</p>
+        <a class="vx-cta" href="https://ai-acounting-app.vercel.app/login" data-demo><span data-i18n="cta">Open the demo</span>
+          <svg class="vx-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+      </div>
+      <div class="fq__list" data-sc-in data-sc-stagger="50">
+        <details name="vx-faq" open><summary><span data-i18n="fq1">How does it connect to MT5?</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></summary>
+          <div class="fq__a"><p data-i18n="fq1a">Through the MT5 Manager connection. Vaultex reads closed trades, rates and balances, and sees every deposit and withdrawal. The demo uses sample data instead.</p></div></details>
+        <details name="vx-faq"><summary><span data-i18n="fq2">Can the AI move our money?</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></summary>
+          <div class="fq__a"><p data-i18n="fq2a">No. Ask Vaultex can read the books and get a request ready. A person has to create it, and a second person has to say OK. Every number it gives comes from your books.</p></div></details>
+        <details name="vx-faq"><summary><span data-i18n="fq3">Can someone change the books later?</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></summary>
+          <div class="fq__a"><p data-i18n="fq3a">No. Once something is written down, it stays. To fix a mistake you add a new entry that undoes it, so the history is never lost. Closed days cannot be changed.</p></div></details>
+        <details name="vx-faq"><summary><span data-i18n="fq4">Who sees what?</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></summary>
+          <div class="fq__a"><p data-i18n="fq4a">Your team sees what their job needs. Clients see only their own money. Partners see only their own clients and pay.</p></div></details>
+        <details name="vx-faq"><summary><span data-i18n="fq5">Is it really all in Arabic?</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></summary>
+          <div class="fq__a"><p data-i18n="fq5a">Yes. Every screen, right to left. The language you pick on this page carries into the demo.</p></div></details>
+        <details name="vx-faq"><summary><span data-i18n="fq6">What do I need to try it?</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></summary>
+          <div class="fq__a"><p data-i18n="fq6a">Nothing to install. Open the demo and you are in, with a sample company full of data. You cannot break anything.</p></div></details>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8 · RESOLVE. The door rolls back and seals. The action sits on its hub. -->
+  <section id="close" class="vx-closer" data-sc-act="pin" data-sc-span="1.8" data-sc-drift="#0B0E12">
+    <div data-sc-stage class="vx-stage" data-vault="close" data-sc-verify-state="">
+      <picture>
+        <source media="(max-width: 899px), (max-aspect-ratio: 23/20)" srcset="assets/poster-m.webp">
+        <img class="vx-poster" src="assets/poster.webp" alt="" width="1920" height="1080" loading="lazy">
+      </picture>
+      <div class="vx-plane vx-hall" aria-hidden="true"><img alt="" data-src="assets/hall.webp" data-src-m="assets/hall-m.webp"></div>
+      <div class="vx-plane vx-glow" aria-hidden="true"></div>
+      <div class="vx-plane vx-wall" aria-hidden="true"><img alt="" data-src="assets/wall.webp" data-src-m="assets/wall-m.webp"></div>
+      <div class="vx-plane vx-spill" aria-hidden="true"></div>
+      <div class="vx-plane vx-seam" aria-hidden="true"><i></i></div>
+      <div class="vx-colscrim" aria-hidden="true"></div>
+      <div class="vx-close-copy" data-sc-cue="0.2" data-sc-rise="0">
+        <h2 data-i18n="closeH">Your money, locked and checked.</h2>
+        <p data-i18n="closeP">Try the demo: a full sample company, all three doors, and Ask Vaultex. Nothing to install.</p>
+      </div>
+      <div class="vx-plane vx-shadow" aria-hidden="true"></div>
+      <div class="vx-plane vx-door" aria-hidden="true">
+        <img class="vx-door__metal" alt="" data-src="assets/door.webp">
+        <img class="vx-door__light" alt="" data-src="assets/door-light.webp">
+      </div>
+      <div class="vx-hub">
+        <a class="vx-cta" href="https://ai-acounting-app.vercel.app/login" data-demo data-sc-cue="0.62" data-sc-rise="0"><span data-i18n="cta">Open the demo</span>
+          <svg class="vx-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+      </div>
+      <div class="vx-ceiling" aria-hidden="true"></div>
+      <div class="vx-floor" aria-hidden="true"></div>
+      <footer class="vx-foot">
+        <span>Vaultex · فولتكس</span>
+        <span class="vx-foot__line" data-i18n="footLine">The back office for forex brokers. The demo uses sample data only.</span>
+        <nav data-i18n-aria="footNav" aria-label="Footer"><a href="#how" data-i18n="navHow">How it works</a><a href="#ask" data-i18n="navAsk">Ask Vaultex</a><a href="#faq" data-i18n="navFaq">Questions</a><span>© 2026</span></nav>
+      </footer>
+    </div>
+  </section>
+
+</main>
+
+<script src="scrollcraft.js"></script>
+<script>
+(function () {
+  'use strict';
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var fine = matchMedia('(hover: hover) and (pointer: fine)').matches;
+  var clamp = function (x, a, b) { return x < a ? a : x > b ? b : x; };
+  var sm = function (x) { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
+  var ease = function (x) { x = clamp(x, 0, 1); return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+  var span = function (p, a, b) { return clamp((p - a) / (b - a), 0, 1); };
+
+  /* ======================================================= two languages == */
+  var LOGIN = 'https://ai-acounting-app.vercel.app/login';
+  var T = {
+    title:     { en: 'Vaultex · The back office for forex brokers', ar: 'فولتكس · المكتب الخلفي لشركات الفوركس' },
+    desc:      { en: 'Vaultex keeps the books for forex brokers, checks every account against MT5, and answers your questions in plain words. In English and Arabic.',
+                 ar: 'فولتكس يمسك دفاتر شركات الفوركس، ويطابق كل حساب مع MT5، ويجيب عن أسئلتك بكلمات بسيطة. بالعربية والإنجليزية.' },
+    markLabel: { en: 'Vaultex, back to top', ar: 'فولتكس، العودة إلى الأعلى' },
+    cta:       { en: 'Open the demo', ar: 'افتح النسخة التجريبية' },
+    h1:        { en: 'All your money. One vault.', ar: 'كل أموالك. في خزنة واحدة.' },
+    heroP:     { en: 'Vaultex keeps the books for forex brokers. It checks every account against MT5 and answers your questions in plain words. In English and Arabic.',
+                 ar: 'فولتكس يمسك دفاتر شركات الفوركس. يطابق كل حساب مع MT5، ويجيب عن أسئلتك بكلمات بسيطة. بالعربية والإنجليزية.' },
+    insideH:   { en: 'Inside, every client has their own box.', ar: 'في الداخل، لكل زبون صندوقه الخاص.' },
+    insideP:   { en: 'Every client, every partner, every currency. Each one with its own balance and its own history.',
+                 ar: 'كل زبون، وكل شريك، وكل عملة. لكلٍّ منها رصيده وسجله الخاص.' },
+    stillLabel:{ en: 'Inside the vault', ar: 'داخل الخزنة' },
+    hallAlt:   { en: 'A long vault corridor lined with steel safe-deposit boxes, lit warm at the far end.',
+                 ar: 'ممر خزنة طويل تصطف على جانبيه صناديق فولاذية، بإضاءة دافئة في نهايته.' },
+    tensionH:  { en: 'At the end of the month, MT5 says one number. Your books say <em>another</em>.',
+                 ar: 'في نهاية الشهر، يقول MT5 رقمًا، وتقول دفاترك <em>رقمًا آخر</em>.' },
+    tensionP:  { en: 'Maybe a deposit was never written down. Maybe a fee was counted twice. Finding it can take a big spreadsheet and a long night.',
+                 ar: 'ربما لم يُسجَّل إيداع. وربما حُسبت رسوم مرتين. والبحث عن السبب قد يحتاج جدولًا كبيرًا وليلة طويلة.' },
+
+    howH:      { en: 'Watch one deposit go through.', ar: 'شاهد إيداعًا واحدًا وهو يمر.' },
+    howP:      { en: 'All money moves in the same five steps. Each step leaves a stamp you can check later.',
+                 ar: 'كل المال يتحرك بالخطوات الخمس نفسها. وكل خطوة تترك ختمًا يمكنك مراجعته لاحقًا.' },
+    howS1:     { en: 'Asked', ar: 'الطلب' },
+    howS1p:    { en: 'A client asks for it in their app, or your team types it in.', ar: 'يطلبه الزبون من تطبيقه، أو يكتبه فريقك.' },
+    howS2:     { en: 'Checked', ar: 'الموافقة' },
+    howS2p:    { en: 'A second person checks the money really arrived, then says OK.', ar: 'يتأكد شخص ثانٍ أن المال وصل فعلًا، ثم يوافق.' },
+    howS3:     { en: 'Sent', ar: 'الإرسال' },
+    howS3p:    { en: 'The money is added on MT5. For a moment, MT5 and the books are different.', ar: 'يُضاف المال على MT5. وللحظة، يختلف MT5 عن الدفاتر.' },
+    howS4:     { en: 'Written down', ar: 'التسجيل' },
+    howS4p:    { en: 'Vaultex writes it in the books on both sides, so nothing can go missing.', ar: 'يسجّله فولتكس في الدفاتر على الجانبين، فلا يضيع شيء.' },
+    howS5:     { en: 'Matched', ar: 'المطابقة' },
+    howS5p:    { en: 'At the end of the day, MT5 and the books say the same. The account is locked.', ar: 'في نهاية اليوم، يتطابق MT5 مع الدفاتر. ويُقفل الحساب.' },
+    slipLabel: { en: 'Sample deposit slip', ar: 'إشعار إيداع تجريبي' },
+    slipKind:  { en: 'Deposit · sample', ar: 'إيداع · تجريبي' },
+    slipClient:{ en: 'Client', ar: 'الزبون' },
+    slipAcct:  { en: 'MT5 account', ar: 'حساب MT5' },
+    slipMethod:{ en: 'Paid by', ar: 'طريقة الدفع' },
+    slipBank:  { en: 'Bank transfer', ar: 'تحويل بنكي' },
+    slipProof: { en: 'Receipt', ar: 'الإيصال' },
+    slipJournal:{ en: 'Written in the books', ar: 'مسجّل في الدفاتر' },
+    slipSeg:   { en: 'Money in the bank', ar: 'المال في البنك' },
+    slipPay:   { en: 'Money we hold for Sophia', ar: 'مال نحفظه لصوفيا' },
+    slipBal:   { en: 'Both sides are equal', ar: 'الجانبان متساويان' },
+    slipAcctBal:{ en: 'Account 50233', ar: 'الحساب 50233' },
+    slipMt5:   { en: 'On MT5', ar: 'على MT5' },
+    slipBook:  { en: 'In the books', ar: 'في الدفاتر' },
+    slipDiff:  { en: 'Difference', ar: 'الفرق' },
+    slipLocked:{ en: 'Matched and locked', ar: 'متطابق ومقفل' },
+    slipOffice:{ en: 'Stamps', ar: 'الأختام' },
+    stamp1:    { en: 'Asked', ar: 'طُلب' },
+    stamp2:    { en: 'OK given', ar: 'تمت الموافقة' },
+    stamp3:    { en: 'Sent on MT5', ar: 'أُرسل على MT5' },
+    stamp4:    { en: 'Written down', ar: 'سُجّل' },
+    stamp5:    { en: 'Matched · locked', ar: 'مطابق · مقفل' },
+
+    akName:    { en: 'Ask Vaultex', ar: 'اسأل فولتكس' },
+    akH:       { en: 'Just ask.', ar: 'فقط اسأل.' },
+    akP:       { en: 'A money helper lives inside Vaultex. Ask it anything in English or Arabic, by typing or talking. It reads your books and answers in simple words.',
+                 ar: 'داخل فولتكس مساعد للمال. اسأله أي شيء بالعربية أو الإنجليزية، كتابةً أو بصوتك. يقرأ دفاترك ويجيبك بكلمات بسيطة.' },
+    akSub:     { en: 'Reads your books. Never moves money on its own.', ar: 'يقرأ دفاترك. ولا يحرّك المال وحده أبدًا.' },
+    akQs:      { en: 'Try a question', ar: 'جرّب سؤالًا' },
+    akPh:      { en: 'Ask about your money…', ar: 'اسأل عن مالك…' },
+    akQ1:      { en: 'Brief me on today. What needs me first?', ar: 'لخّص لي اليوم. ما الذي يحتاجني أولًا؟' },
+    akQ2:      { en: 'Who are our 5 biggest clients? Show a chart.', ar: 'من هم أكبر 5 زبائن لدينا؟ اعرض رسمًا.' },
+    akQ3:      { en: 'Get a $500 deposit ready for Sami Haddad.', ar: 'جهّز إيداعًا بقيمة 500$ لسامي حداد.' },
+    akQ4:      { en: 'Now ask in Arabic.', ar: 'والآن اسأل بالإنجليزية.' },
+    akF1h:     { en: 'It shows its work.', ar: 'يُريك مصدر كل جواب.' },
+    akF1:      { en: 'Every answer lists the records it checked, so you can check them too.', ar: 'كل إجابة تذكر السجلات التي فحصها، لتتمكن من فحصها أنت أيضًا.' },
+    akF2h:     { en: 'It draws the picture.', ar: 'يرسم لك الصورة.' },
+    akF2:      { en: 'Ask for a chart and it makes one from your real numbers.', ar: 'اطلب رسمًا بيانيًا فيصنعه من أرقامك الحقيقية.' },
+    akF3h:     { en: 'It gets things ready. You decide.', ar: 'يجهّز الأمور، وأنت تقرّر.' },
+    akF3:      { en: 'It can fill in a money request for you. Nothing moves until two people say OK.', ar: 'يمكنه تعبئة طلب مال لك. ولا يتحرك شيء حتى يوافق شخصان.' },
+    akNote:    { en: 'These are sample answers from the demo company. In the app, the answers come from your own books.',
+                 ar: 'هذه إجابات تجريبية من الشركة التجريبية. في التطبيق، تأتي الإجابات من دفاترك أنت.' },
+    akTry:     { en: 'Try it in the demo', ar: 'جرّبه في النسخة التجريبية' },
+
+    rcH:       { en: 'Every night, Vaultex opens every box and checks it against MT5.', ar: 'كل ليلة، يفتح فولتكس كل صندوق ويطابقه مع MT5.' },
+    rcP:       { en: 'Your books on one side, MT5 on the other, one client at a time. If they match, the box locks. If not, Vaultex shows you why.',
+                 ar: 'دفاترك في جهة، وMT5 في الجهة الأخرى، زبونًا بعد زبون. إذا تطابقا يُقفل الصندوق. وإلا يُريك فولتكس السبب.' },
+    rcChecked: { en: 'Checked', ar: 'تم فحصه' },
+    rcGaps:    { en: 'Not matching', ar: 'غير متطابق' },
+    rcNet:     { en: 'Difference', ar: 'الفرق' },
+    rcLog:     { en: 'What Vaultex found', ar: 'ما وجده فولتكس' },
+    rcDone:    { en: '48 of 48 match. Your books equal MT5.', ar: '48 من 48 متطابقة. دفاترك تساوي MT5.' },
+    rcSample:  { en: 'Sample · 48 client accounts', ar: 'تجريبي · 48 حساب زبون' },
+    rcVs:      { en: 'Books vs MT5, in USD', ar: 'الدفاتر مقابل MT5، بالدولار' },
+
+    ptH:       { en: 'One app. Three doors.', ar: 'تطبيق واحد. ثلاثة أبواب.' },
+    ptToggle:  { en: 'Language of the list', ar: 'لغة القائمة' },
+    ptNote:    { en: 'Every screen works in English and Arabic, and installs like an app on a computer or a phone.',
+                 ar: 'كل شاشة تعمل بالعربية والإنجليزية، وتُثبَّت كتطبيق على الحاسوب أو الهاتف.' },
+
+    fqH:  { en: 'Simple answers.', ar: 'إجابات بسيطة.' },
+    fqP:  { en: 'What people ask us first.', ar: 'ما يسألنا عنه الناس أولًا.' },
+    fq1:  { en: 'How does it connect to MT5?', ar: 'كيف يتصل بـ MT5؟' },
+    fq1a: { en: 'Through the MT5 Manager connection. Vaultex reads closed trades, rates and balances, and sees every deposit and withdrawal. The demo uses sample data instead.',
+            ar: 'عبر اتصال MT5 Manager. يقرأ فولتكس الصفقات المغلقة والأسعار والأرصدة، ويرى كل إيداع وسحب. أما النسخة التجريبية فتستخدم بيانات تجريبية.' },
+    fq2:  { en: 'Can the AI move our money?', ar: 'هل يستطيع الذكاء الاصطناعي تحريك أموالنا؟' },
+    fq2a: { en: 'No. Ask Vaultex can read the books and get a request ready. A person has to create it, and a second person has to say OK. Every number it gives comes from your books.',
+            ar: 'لا. يستطيع اسأل فولتكس قراءة الدفاتر وتجهيز طلب. لكن يجب أن ينشئه شخص، وأن يوافق عليه شخص ثانٍ. وكل رقم يذكره يأتي من دفاترك.' },
+    fq3:  { en: 'Can someone change the books later?', ar: 'هل يمكن لأحد تغيير الدفاتر لاحقًا؟' },
+    fq3a: { en: 'No. Once something is written down, it stays. To fix a mistake you add a new entry that undoes it, so the history is never lost. Closed days cannot be changed.',
+            ar: 'لا. ما يُسجَّل يبقى. ولتصحيح خطأ تضيف قيدًا جديدًا يلغيه، فلا يضيع السجل أبدًا. والأيام المغلقة لا يمكن تغييرها.' },
+    fq4:  { en: 'Who sees what?', ar: 'من يرى ماذا؟' },
+    fq4a: { en: 'Your team sees what their job needs. Clients see only their own money. Partners see only their own clients and pay.',
+            ar: 'يرى فريقك ما يحتاجه عمله. ويرى الزبائن أموالهم فقط. ويرى الشركاء زبائنهم وأجورهم فقط.' },
+    fq5:  { en: 'Is it really all in Arabic?', ar: 'هل هو بالعربية فعلًا بالكامل؟' },
+    fq5a: { en: 'Yes. Every screen, right to left. The language you pick on this page carries into the demo.',
+            ar: 'نعم. كل شاشة، ومن اليمين إلى اليسار. واللغة التي تختارها هنا تنتقل معك إلى النسخة التجريبية.' },
+    fq6:  { en: 'What do I need to try it?', ar: 'ماذا أحتاج لأجرّبه؟' },
+    fq6a: { en: 'Nothing to install. Open the demo and you are in, with a sample company full of data. You cannot break anything.',
+            ar: 'لا شيء للتثبيت. افتح النسخة التجريبية وستدخل مباشرة، مع شركة تجريبية مليئة بالبيانات. لا يمكنك أن تُفسد شيئًا.' },
+
+    closeH:    { en: 'Your money, locked and checked.', ar: 'أموالك، مقفلة ومطابقة.' },
+    closeP:    { en: 'Try the demo: a full sample company, all three doors, and Ask Vaultex. Nothing to install.',
+                 ar: 'جرّب النسخة التجريبية: شركة تجريبية كاملة، والأبواب الثلاثة، واسأل فولتكس. دون أي تثبيت.' },
+    footLine:  { en: 'The back office for forex brokers. The demo uses sample data only.',
+                 ar: 'المكتب الخلفي لشركات الفوركس. النسخة التجريبية تستخدم بيانات تجريبية فقط.' },
+    footNav:   { en: 'Footer', ar: 'التذييل' },
+    navLabel:  { en: 'Sections', ar: 'الأقسام' },
+    navHow:    { en: 'How it works', ar: 'كيف يعمل' },
+    navAsk:    { en: 'Ask Vaultex', ar: 'اسأل فولتكس' },
+    navRec:    { en: 'Checking', ar: 'المطابقة' },
+    navFaq:    { en: 'Questions', ar: 'أسئلة' }
+  };
+  var LANG = 'en';
+  var langHooks = [];
+  var store = {
+    get: function () { try { return localStorage.getItem('vaultex-lang'); } catch (e) { return null; } },
+    set: function (v) { try { localStorage.setItem('vaultex-lang', v); } catch (e) {} }
+  };
+  function applyLang(lang) {
+    LANG = lang === 'ar' ? 'ar' : 'en';
+    var root = document.documentElement, ar = LANG === 'ar';
+    root.lang = LANG; root.dir = ar ? 'rtl' : 'ltr';
+    document.title = T.title[LANG];
+    document.querySelector('meta[name="description"]').setAttribute('content', T.desc[LANG]);
+    Array.prototype.forEach.call(document.querySelectorAll('[data-i18n]'), function (el) {
+      var e = T[el.getAttribute('data-i18n')]; if (e) el.innerHTML = e[LANG];
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-i18n-aria]'), function (el) {
+      var e = T[el.getAttribute('data-i18n-aria')]; if (e) el.setAttribute('aria-label', e[LANG]);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-i18n-alt]'), function (el) {
+      var e = T[el.getAttribute('data-i18n-alt')]; if (e) el.setAttribute('alt', e[LANG]);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-dir]'), function (el) { el.setAttribute('dir', root.dir); });
+    var sw = document.querySelector('[data-lang-switch]');
+    sw.textContent = ar ? 'English' : 'العربية';
+    sw.setAttribute('lang', ar ? 'en' : 'ar');
+    sw.setAttribute('aria-label', ar ? 'View this page in English' : 'عرض الصفحة بالعربية');
+    // The demo opens on the sign-in page, in the language the visitor chose.
+    Array.prototype.forEach.call(document.querySelectorAll('[data-demo]'), function (a) {
+      a.setAttribute('href', LOGIN + (ar ? '?lang=ar' : ''));
+    });
+    langHooks.forEach(function (fn) { fn(); });
+  }
+  var initial = (function () {
+    var q = new URLSearchParams(location.search).get('lang');
+    return q === 'ar' || q === 'en' ? q : (store.get() || 'en');
+  })();
+  applyLang(initial);
+  document.querySelector('[data-lang-switch]').addEventListener('click', function () {
+    var next = LANG === 'ar' ? 'en' : 'ar';
+    store.set(next);
+    applyLang(next);
+    if (engine) engine.layout();
+  });
+
+  // Reduced motion: the vault becomes still frames with no pinned travel.
+  if (reduce) {
+    ['vault', 'close'].forEach(function (id) {
+      var s = document.getElementById(id);
+      s.setAttribute('data-sc-act', 'flow');
+      s.removeAttribute('data-sc-span');
+      s.style.height = '100svh';
+      var st = s.querySelector('[data-sc-stage]');
+      st.style.position = 'relative'; st.style.height = '100svh'; st.style.overflow = 'clip';
+      // A still frame has no timeline, so its copy is simply present.
+      Array.prototype.forEach.call(s.querySelectorAll('[data-sc-cue]'), function (c) {
+        c.removeAttribute('data-sc-cue'); c.style.opacity = '1';
+      });
+    });
+  }
+
+  var engine = null;
+  engine = ScrollCraft.mount(document.body);
+
+  /* ================================================== the vault scenes == */
+  // Geometry measured on the source plates (tools/build_assets.py).
+  var PLATES = {
+    wide: { w: 2720, h: 1530, cx: 1362, cy: 767, doorR: 545, hole: 226, open: 470 },
+    tall: { w: 1520, h: 2736, cx: 763, cy: 1716, doorR: 625, hole: 330, open: 560 }
+  };
+  var DOOR_IMG = 1497 / 1485;           // door asset side / disc diameter
+  var HALL_AR = 2736 / 1520, HALL_VP = [0.5, 0.51];
+  // Depths: distance from the starting camera, wall = 1.
+  var Z = { hall: 2.4, glow: 1.5, wall: 1, door: 0.97, pillar: 0.45, dust: 0.62 };
+  var ZEND = 0.88;
+
+  function Scene(stage, mode) {
+    this.stage = stage; this.mode = mode;
+    this.act = stage.closest('[data-sc-act]');
+    this.q = function (s) { return stage.querySelector(s); };
+    this.el = {
+      poster: this.q('.vx-poster'), hall: this.q('.vx-hall'), glow: this.q('.vx-glow'), wall: this.q('.vx-wall'),
+      spill: this.q('.vx-spill'), seam: this.q('.vx-seam'), shadow: this.q('.vx-shadow'), door: this.q('.vx-door'),
+      metal: this.q('.vx-door__metal'), pl: this.q('.vx-pillar--l'), pr: this.q('.vx-pillar--r'), dust: this.q('.vx-dust'),
+      open: this.q('.vx-open') || this.q('.vx-close-copy'), hub: this.q('.vx-hub'), scrim: this.q('.vx-inside-scrim')
+    };
+    this.p = -1; this.mx = 0; this.my = 0; this.tx = 0; this.ty = 0; this.dirty = true; this.near = mode === 'hero';
+  }
+  Scene.prototype.layout = function () {
+    var vw = this.stage.clientWidth, vh = this.stage.clientHeight;
+    var tall = vw < 900 || vw / vh < 1.15;
+    var rtl = document.documentElement.dir === 'rtl';
+    this.sign = rtl ? 1 : -1;   // the door rolls toward the copy: left in English, right in Arabic
+    var g = tall ? PLATES.tall : PLATES.wide, k, left, top, dx, dy;
+    if (!tall) {
+      dx = vw * (rtl ? 0.4 : 0.6);
+      k = Math.max(vh / g.h, dx / g.cx, (vw - dx) / (g.w - g.cx)) * 1.035;
+      left = dx - g.cx * k;
+      top = (vh - g.h * k) / 2;
+      dy = top + g.cy * k;
+    } else {
+      // Phones: keep air either side of the door rather than filling the
+      // height. The plate sits on the floor and its top fades into the bar.
+      k = Math.max(vw / g.w * 1.04, Math.min(vh / g.h, (vw * 0.86) / (2 * g.doorR)));
+      left = clamp(vw / 2 - g.cx * k, vw - g.w * k, 0);
+      top = Math.min(vh - g.h * k, Math.max(vh * 0.6 - g.cy * k, vh - g.h * k));
+      dx = left + g.cx * k; dy = top + g.cy * k;
+    }
+    this.L = { vw: vw, vh: vh, tall: tall, g: g, k: k, dx: dx, dy: dy, R: g.doorR * k };
+    this.stage.classList.toggle('is-tall', tall);
+    this.stage.classList.toggle('has-gap', tall && top > 0.5);
+    var o = dx + 'px ' + dy + 'px';
+    var box = function (el, x, y, w, h) {
+      if (!el) return;
+      el.style.left = x + 'px'; el.style.top = y + 'px'; el.style.width = w + 'px'; el.style.height = h + 'px';
+      el.style.transformOrigin = (dx - x) + 'px ' + (dy - y) + 'px';
+    };
+    box(this.el.wall, left, top, g.w * k, g.h * k);
+    var ps = this.el.poster.style;
+    ps.left = left + 'px'; ps.top = top + 'px'; ps.width = g.w * k + 'px'; ps.height = g.h * k + 'px';
+    var hh = Math.max(vh, vw / HALL_AR) * 1.02, hw = hh * HALL_AR;
+    box(this.el.hall, dx - hw * HALL_VP[0], dy - hh * HALL_VP[1], hw, hh);
+    var R = this.L.R, S = 2 * R * DOOR_IMG;
+    box(this.el.door, dx - S / 2, dy - S / 2, S, S);
+    this.el.metal.style.transformOrigin = '50% 50%';
+    box(this.el.shadow, dx - R * 1.02, dy - R * 1.0, R * 2.04, R * 2.04);
+    var sr = R * 1.02; box(this.el.seam, dx - sr, dy - sr, sr * 2, sr * 2);
+    var gr = g.hole * k * 3.2; box(this.el.glow, dx - gr, dy - gr, gr * 2, gr * 2);
+    var spr = R * 2.1; box(this.el.spill, dx - spr, dy - spr, spr * 2, spr * 2);
+    var pw = tall ? vw * 0.16 : vw * 0.085;
+    box(this.el.pl, -pw * 0.45, -vh * 0.1, pw, vh * 1.2);
+    box(this.el.pr, vw - pw * 0.55, -vh * 0.1, pw, vh * 1.2);
+    box(this.el.dust, -vw * 0.1, -vh * 0.1, vw * 1.2, vh * 1.2);
+    if (!tall) {
+      var side = rtl ? vw - dx : dx, gutter = clamp(vw * 0.05, 20, 88);
+      var col = Math.max(14 * 16, side - R - Math.max(vw * 0.035, 40) - gutter);
+      this.stage.style.setProperty('--vx-col', col + 'px');
+      this.q('.vx-colscrim').style.width = (side - R * 0.6) + 'px';
+    } else {
+      this.stage.style.removeProperty('--vx-col');
+      this.q('.vx-colscrim').style.width = '';
+    }
+    if (this.el.hub) { this.el.hub.style.left = dx + 'px'; this.el.hub.style.top = dy + 'px'; }
+    // How far the door rolls to clear the doorway (and, on phones, the frame).
+    this.roll = tall ? Math.max((rtl ? vw - dx : dx) + R * 0.98, 2.04 * R) : R + g.open * k + vw * 0.03;
+    this.dirty = true;
+    // Crossing between the wide and tall compositions swaps the plates too.
+    if (this.loadedTall !== undefined && this.loadedTall !== tall) this.load();
+  };
+  Scene.prototype.progress = function () {
+    var r = this.act.getBoundingClientRect();
+    var travel = Math.max(r.height - innerHeight, 1);
+    return clamp(-r.top / travel, 0, 1);
+  };
+  Scene.prototype.frame = function () {
+    var p = reduce ? 0 : this.progress();
+    if (fine && !reduce) { this.mx += (this.tx - this.mx) * 0.07; this.my += (this.ty - this.my) * 0.07; }
+    var moving = Math.abs(this.tx - this.mx) > 0.001 || Math.abs(this.ty - this.my) > 0.001;
+    if (!this.dirty && p === this.p && !moving) return;
+    this.dirty = false; this.p = p;
+    var L = this.L, e = this.el, rollT, dolly = 0, door, seam, glow, spill;
+    if (this.mode === 'hero') {
+      rollT = ease(span(p, 0.10, 0.40));
+      dolly = sm(span(p, 0.30, 0.90)) * ZEND + 0.03 * sm(span(p, 0.90, 1));
+      door = this.sign * rollT * this.roll;
+      seam = 1 - sm(span(p, 0.08, 0.2));
+      glow = (0.35 + 0.65 * rollT) * (1 - sm(span(dolly, 0.55, 0.88)));
+      spill = rollT * (1 - sm(span(dolly, 0.2, 0.6)));
+      if (e.scrim) e.scrim.style.opacity = (sm(span(p, 0.56, 0.68)) * (1 - sm(span(p, 0.92, 0.98)))).toFixed(3);
+    } else {
+      rollT = 1 - ease(span(p, 0.0, 0.6));
+      door = this.sign * rollT * this.roll;
+      seam = sm(span(p, 0.54, 0.6)) * (1 - sm(span(p, 0.62, 0.78)));
+      glow = 0.25 + 0.5 * rollT;
+      spill = 0.8 * rollT;
+    }
+    var sx = (L.vw / 2 - L.dx) * (dolly / ZEND), sy = (L.vh / 2 - L.dy) * (dolly / ZEND);
+    var mx = this.mx, my = this.my;
+    var t3 = function (z, extra) {
+      var s = z / Math.max(z - dolly, 0.02);
+      var px = -mx * 12 / z, py = -my * 8 / z;
+      return 'translate3d(' + (sx + px).toFixed(2) + 'px,' + (sy + py).toFixed(2) + 'px,0) scale(' + s.toFixed(4) + ')' + (extra || '');
+    };
+    var T = function (el, v) { if (el) el.style.transform = v; };
+    var O = function (el, v) { if (el) el.style.opacity = v.toFixed(3); };
+    T(e.hall, t3(Z.hall));
+    T(e.glow, t3(Z.glow)); O(e.glow, glow);
+    T(e.wall, t3(Z.wall));
+    T(e.spill, t3(Z.wall)); O(e.spill, spill);
+    T(e.seam, t3(Z.wall)); O(e.seam, seam);
+    T(e.door, t3(Z.door, ' translate3d(' + door.toFixed(2) + 'px,0,0)'));
+    T(e.metal, 'rotate(' + (door / L.R).toFixed(4) + 'rad)');
+    T(e.shadow, t3(Z.wall, ' translate3d(' + (door - this.sign * L.R * 0.03).toFixed(2) + 'px,' + (L.R * 0.035).toFixed(2) + 'px,0)'));
+    var nearFade = 1 - sm(span(dolly, 0.18, 0.4));
+    T(e.pl, t3(Z.pillar)); T(e.pr, t3(Z.pillar)); O(e.pl, nearFade); O(e.pr, nearFade);
+    T(e.dust, t3(Z.dust)); O(e.dust, 1 - sm(span(dolly, 0.32, 0.58)));
+    this.stage.setAttribute('data-sc-verify-state', [Math.round(door), Math.round(dolly * 100), Math.round(seam * 20)].join(':'));
+  };
+  Scene.prototype.load = function () {
+    var self = this, tall = this.L.tall;
+    this.loadedTall = tall;
+    this.stage.classList.remove('is-live');
+    var imgs = Array.prototype.slice.call(this.stage.querySelectorAll('img[data-src]'));
+    return Promise.all(imgs.map(function (img) {
+      img.src = (tall && img.getAttribute('data-src-m')) || img.getAttribute('data-src');
+      return img.decode();
+    })).then(function () { if (self.loadedTall === tall) { self.stage.classList.add('is-live'); self.dirty = true; } })
+      .catch(function () { /* any plate missing: the complete poster stays */ });
+  };
+
+  var scenes = [];
+  Array.prototype.forEach.call(document.querySelectorAll('[data-vault]'), function (st) {
+    var s = new Scene(st, st.getAttribute('data-vault'));
+    s.layout(); scenes.push(s);
+  });
+  if (reduce) addEventListener('resize', function () { scenes.forEach(function (s) { s.layout(); }); }, { passive: true });
+  langHooks.push(function () { scenes.forEach(function (s) { s.layout(); }); });
+  if (!reduce) {
+    // Hero assets load at once; the closing scene loads when the reader nears it.
+    scenes[0].load();
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (en) {
+        var s = scenes.filter(function (x) { return x.act === en.target; })[0];
+        if (!s) return;
+        s.near = en.isIntersecting;
+        s.stage.classList.toggle('is-idle', !en.isIntersecting);
+        if (en.isIntersecting && s.mode === 'close' && !s.loading) { s.loading = true; s.load(); }
+      });
+    }, { rootMargin: '150% 0px 150% 0px' });
+    scenes.forEach(function (s) { io.observe(s.act); });
+    var lastW = innerWidth;
+    addEventListener('resize', function () {
+      if (innerWidth === lastW && !fine) return;
+      lastW = innerWidth;
+      scenes.forEach(function (s) { s.layout(); });
+    }, { passive: true });
+    if (fine) addEventListener('pointermove', function (ev) {
+      var tx = ev.clientX / innerWidth * 2 - 1, ty = ev.clientY / innerHeight * 2 - 1;
+      scenes.forEach(function (s) { s.tx = tx; s.ty = ty; });
+    }, { passive: true });
+    (function loop() {
+      requestAnimationFrame(loop);
+      for (var i = 0; i < scenes.length; i++) if (scenes[i].near) scenes[i].frame();
+    })();
+  }
+
+  // Keyboard: the hub button only exists once the door has sealed, so focus
+  // lands on the sealed frame (the engine's own centring runs first).
+  var hubLink = document.querySelector('.vx-hub a');
+  hubLink.addEventListener('focus', function () {
+    if (reduce) return;
+    var c = document.getElementById('close');
+    setTimeout(function () {
+      window.scrollTo({ top: c.offsetTop + c.offsetHeight - innerHeight, behavior: 'instant' });
+    }, 0);
+  });
+
+  /* ========================================== the reconciliation wall == */
+  // Sample book. Every figure below is invented for the demonstration and is
+  // labelled as sample data on the page. The pass compares book to MT5.
+  var GAPS = {
+    50207: { d: 3672.50, why: { en: 'Bank transfer came in, <strong>not written down yet</strong>', ar: 'وصل تحويل بنكي، <strong>ولم يُسجَّل بعد</strong>' },
+             fix: { en: 'Written down from request 1176', ar: 'سُجّل من الطلب 1176' } },
+    50214: { d: 2500.00, why: { en: 'Deposit on MT5, <strong>missing from the books</strong>', ar: 'إيداع على MT5، <strong>غير موجود في الدفاتر</strong>' },
+             fix: { en: 'Written down from request 1182', ar: 'سُجّل من الطلب 1182' } },
+    50219: { d: -120.40, why: { en: 'Partner pay <strong>counted twice</strong>', ar: 'أجر شريك <strong>حُسب مرتين</strong>' },
+             fix: { en: 'Extra copy undone', ar: 'أُلغيت النسخة الزائدة' } },
+    50226: { d: 18.72, why: { en: 'Euro account <strong>not at today\'s rate</strong>', ar: 'حساب باليورو <strong>ليس بسعر اليوم</strong>' },
+             fix: { en: 'Updated to today\'s rate', ar: 'حُدّث بسعر اليوم' } },
+    50231: { d: -1000.00, why: { en: 'Withdrawal paid, <strong>still marked as waiting</strong>', ar: 'سحب مدفوع، <strong>ما زال يظهر منتظرًا</strong>' },
+             fix: { en: 'Request 1190 finished', ar: 'اكتمل الطلب 1190' } },
+    50238: { d: 0.35, why: { en: 'A tiny <strong>rounding</strong> difference', ar: 'فرق <strong>تقريب</strong> صغير' },
+             fix: { en: 'Rounding fixed', ar: 'صُحّح التقريب' } },
+    50244: { d: 75.00, why: { en: 'Bonus <strong>not written down</strong>', ar: 'مكافأة <strong>لم تُسجَّل</strong>' },
+             fix: { en: 'Bonus written down', ar: 'سُجّلت المكافأة' } }
+  };
+  var wall = document.querySelector('[data-rc="wall"]');
+  var accounts = [];
+  for (var n = 0; n < 48; n++) {
+    var id = 50201 + n;
+    var book = Math.round((800 + ((n * 7919) % 46000) + ((n * 131) % 97) / 100) * 100) / 100;
+    var gap = GAPS[id];
+    accounts.push({ id: id, book: book, mt5: gap ? Math.round((book + gap.d) * 100) / 100 : book, gap: gap || null, fixed: false });
+    var li = document.createElement('li');
+    li.className = 'bx';
+    li.innerHTML = '<span class="bx__no">' + id + '</span><span class="bx__key"></span><span class="bx__bolt"></span><span class="bx__amt"></span>';
+    wall.appendChild(li);
+    accounts[n].el = li;
+  }
+  var gapList = accounts.filter(function (a) { return a.gap; });
+  var fmt = function (v) {
+    var s = Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return (v < 0 ? '−' : v > 0 ? '+' : '') + s;
+  };
+  var rc = function (k) { return document.querySelector('[data-rc="' + k + '"]'); };
+  var log = rc('log');
+  gapList.forEach(function (a) {
+    var li = document.createElement('li');
+    li.innerHTML = '<b>' + a.id + '</b><span></span><i dir="ltr">' + fmt(a.gap.d) + '</i>';
+    log.appendChild(li); a.logEl = li;
+  });
+  var reconAct = document.getElementById('reconcile');
+  var reconStage = reconAct.querySelector('[data-sc-stage]');
+  var lastKey = '';
+  function recon() {
+    var r = reconAct.getBoundingClientRect();
+    var p = clamp(-r.top / Math.max(r.height - innerHeight, 1), 0, 1);
+    if (r.bottom < -innerHeight || r.top > innerHeight * 2) return;
+    var scanned = Math.floor(span(p, 0.06, 0.50) * 48 + 1e-6);
+    var fixedN = Math.floor(span(p, 0.54, 0.88) * gapList.length + 1e-6);
+    var key = scanned + ':' + fixedN + ':' + (p > 0.9 ? 1 : 0);
+    if (key === lastKey) return; lastKey = key;
+    gapList.forEach(function (a, i) { a.fixed = i < fixedN; });
+    var open = 0, net = 0;
+    accounts.forEach(function (a, i) {
+      var seen = i < scanned;
+      var diff = a.fixed ? 0 : a.mt5 - a.book;
+      var isGap = seen && Math.abs(diff) > 0.004;
+      if (isGap) { open++; net += diff; }
+      a.el.classList.toggle('is-scan', i === scanned && scanned < 48);
+      a.el.classList.toggle('is-ok', seen && !isGap);
+      a.el.classList.toggle('is-gap', isGap);
+      if (isGap) a.el.querySelector('.bx__amt').textContent = fmt(diff);
+      if (a.logEl) {
+        a.logEl.classList.toggle('on', seen);
+        a.logEl.querySelector('span').innerHTML = a.fixed ? '<strong>' + a.gap.fix[LANG] + '</strong>' : a.gap.why[LANG];
+        a.logEl.querySelector('i').textContent = a.fixed ? '0.00' : fmt(a.gap.d);
+      }
+    });
+    var shown = gapList.filter(function (a, i) { return i < gapList.length && a.logEl.classList.contains('on'); });
+    gapList.forEach(function (a) { a.logEl.classList.toggle('recent', shown.indexOf(a) >= shown.length - 3); });
+    rc('checked').textContent = scanned;
+    rc('gaps').textContent = open;
+    rc('net').textContent = fmt(Math.round(net * 100) / 100).replace('+', '');
+    rc('gapsWrap').classList.toggle('is-gap', open > 0);
+    rc('netWrap').classList.toggle('is-gap', Math.abs(net) > 0.004);
+    rc('done').classList.toggle('on', scanned === 48 && open === 0);
+    reconStage.setAttribute('data-sc-verify-state', key);
+  }
+  addEventListener('scroll', function () { requestAnimationFrame(recon); }, { passive: true });
+  langHooks.push(function () { lastKey = ''; recon(); });
+  addEventListener('resize', recon, { passive: true });
+  recon();
+
+  /* ================================================ portals, two scripts == */
+  var ptSec = document.getElementById('portals');
+  var layers = { en: ptSec.querySelector('[data-pt="en"]'), ar: ptSec.querySelector('[data-pt="ar"]') };
+  var btns = ptSec.querySelectorAll('.pt__toggle button');
+  var manual = null;
+  function showLang(t) {           // t: 0 = the page's language, 1 = the other one, between = the wipe
+    var base = LANG, other = base === 'ar' ? 'en' : 'ar';
+    layers[base].style.zIndex = '1'; layers[base].style.clipPath = 'none';
+    layers[other].style.zIndex = '2';
+    var cut = ((1 - t) * 100).toFixed(2) + '%';
+    // each language is revealed from the edge it is read from
+    layers[other].style.clipPath = other === 'ar' ? 'inset(0 0 0 ' + cut + ')' : 'inset(0 ' + cut + ' 0 0)';
+    var shown = t > 0.5 ? other : base;
+    layers.en.setAttribute('aria-hidden', shown === 'en' ? 'false' : 'true');
+    layers.ar.setAttribute('aria-hidden', shown === 'ar' ? 'false' : 'true');
+    Array.prototype.forEach.call(btns, function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-lang') === shown)); });
+  }
+  Array.prototype.forEach.call(btns, function (b) {
+    b.addEventListener('click', function () { manual = b.getAttribute('data-lang') === LANG ? 0 : 1; showLang(manual); });
+  });
+  function ptScroll() {
+    if (manual !== null) return;
+    var r = ptSec.getBoundingClientRect();
+    var p = clamp((innerHeight - r.top) / (r.height + innerHeight), 0, 1);
+    showLang(reduce ? (p > 0.6 ? 1 : 0) : sm(span(p, 0.5, 0.68)));
+  }
+  addEventListener('scroll', function () { requestAnimationFrame(ptScroll); }, { passive: true });
+  langHooks.push(function () { manual = null; ptScroll(); });
+  ptScroll();
+
+  var actP = function (el) {
+    var r = el.getBoundingClientRect();
+    if (r.bottom < -innerHeight || r.top > innerHeight * 2) return -1;
+    return clamp(-r.top / Math.max(r.height - innerHeight, 1), 0, 1);
+  };
+  var money2 = function (v) { return Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+  var LOCK = '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="9" width="12" height="8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
+  var each = function (list, fn) { Array.prototype.forEach.call(list, fn); };
+
+  /* ================================================ follow one deposit == */
+  // One sample deposit of 5,000.00 into MT5 50233. Each threshold stamps the
+  // slip; between Execute and Post the account shows the gap the tension act
+  // named, and Post closes it.
+  var how = document.getElementById('how');
+  var hq = function (k) { return how.querySelector('[data-how="' + k + '"]'); };
+  var howSteps = how.querySelectorAll('.hw__step'), howStamps = how.querySelectorAll('.stamp');
+  var HOW_AT = [0.06, 0.23, 0.4, 0.57, 0.74];
+  var howKey = '';
+  function howFrame() {
+    var p = actP(how);
+    if (p < 0) return;
+    var s = 0;
+    for (var i = 0; i < HOW_AT.length; i++) if (p >= HOW_AT[i]) s = i + 1;
+    var key = s + LANG;
+    if (key === howKey) return; howKey = key;
+    each(howSteps, function (el, i) { el.classList.toggle('is-done', i < s - 1); el.classList.toggle('is-on', i === s - 1); });
+    each(howStamps, function (el, i) { el.classList.toggle('on', i < s); });
+    hq('slip').classList.toggle('has-post', s >= 4);
+    var mt5 = s >= 3 ? 17480 : 12480, book = s >= 4 ? 17480 : 12480, d = mt5 - book;
+    hq('mt5').textContent = money2(mt5);
+    hq('book').textContent = money2(book);
+    hq('mt5').classList.toggle('is-gap', d !== 0);
+    hq('gap').classList.toggle('is-gap', d !== 0);
+    hq('gap').classList.toggle('is-ok', s >= 5);
+    hq('gapLabel').innerHTML = s >= 5 ? LOCK + T.slipLocked[LANG] : T.slipDiff[LANG];
+    hq('gapAmt').textContent = (d > 0 ? '+' : '') + money2(d);
+    hq('now').innerHTML = s ? '<strong>' + T['howS' + s][LANG] + '.</strong> ' + T['howS' + s + 'p'][LANG] : T.howP[LANG];
+    how.querySelector('[data-sc-stage]').setAttribute('data-sc-verify-state', String(s));
+  }
+
+  /* ======================================================= ask vaultex == */
+  // The peak. Four short scenes play in a copy of the app's Ask Vaultex panel:
+  // a briefing, a chart, a drafted request, and a question in the other
+  // language. The figures are the demo company's and are labelled as samples.
+  var ask = document.getElementById('ask');
+  var axWin = ask.querySelector('[data-ax="win"]'), axThread = ask.querySelector('[data-ax="thread"]');
+  var axTyping = ask.querySelector('[data-ax="typing"]'), axSend = ask.querySelector('.ax__send');
+  var axBtns = ask.querySelectorAll('.ax__qs button');
+  var ORB = '<span class="ax__orb" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M10 2.5l1.6 4.3 4.4 1.6-4.4 1.6L10 14.3 8.4 10 4 8.4l4.4-1.6zM15.5 13l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z" fill="currentColor"/></svg></span>';
+  var CHECK = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.3 8.2 7.2 10l3.5-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var TOOLS = {
+    overview: { en: 'Company overview', ar: 'نظرة على الشركة' },
+    requests: { en: 'Money requests', ar: 'طلبات المال' },
+    match:    { en: 'Check the numbers', ar: 'مطابقة الأرقام' },
+    clients:  { en: 'Clients', ar: 'الزبائن' },
+    client:   { en: 'Client file', ar: 'ملف الزبون' },
+    profit:   { en: 'Profit', ar: 'الأرباح' }
+  };
+  var SCENES = {
+    brief: {
+      q: { en: T.akQ1.en, ar: T.akQ1.ar },
+      tools: ['overview', 'requests', 'match'],
+      a: {
+        en: '<p><strong>3 things need you today.</strong></p><ol><li><strong>5 money requests</strong> wait for an OK. The oldest has waited 6 hours.</li><li><strong>Fadi Rahal</strong> does not match MT5. $150 has no reason yet.</li><li><strong>The day cannot close</strong> until 2 half-done requests are written in the books.</li></ol><p>Everything else looks good. You have <strong>$522,820</strong> in cash and banks.</p>',
+        ar: '<p><strong>3 أشياء تحتاجك اليوم.</strong></p><ol><li><strong>5 طلبات مال</strong> تنتظر الموافقة. أقدمها ينتظر منذ 6 ساعات.</li><li><strong>فادي رحال</strong> لا يتطابق مع MT5. هناك <span dir="ltr">$150</span> بلا سبب بعد.</li><li><strong>لا يمكن إغلاق اليوم</strong> حتى يُسجَّل طلبان غير مكتملين في الدفاتر.</li></ol><p>كل شيء آخر جيد. لديك <strong dir="ltr">$522,820</strong> في الصناديق والبنوك.</p>'
+      }
+    },
+    chart: {
+      q: { en: T.akQ2.en, ar: T.akQ2.ar },
+      tools: ['clients'],
+      a: {
+        en: '<p>Your 5 biggest clients keep <strong>$192,600</strong> with you. That is about 6 of every 10 dollars clients keep with you. <strong>Dana Issa</strong> is the biggest. All five match MT5 and have their papers.</p>',
+        ar: '<p>أكبر 5 زبائن يحفظون <strong dir="ltr">$192,600</strong> لديك. أي نحو 6 من كل 10 دولارات يحفظها الزبائن لديك. <strong>دانة عيسى</strong> هي الأكبر. والخمسة متطابقون مع MT5 وأوراقهم مكتملة.</p>'
+      },
+      chart: {
+        title: { en: 'Biggest clients, money with us', ar: 'أكبر الزبائن، أموالهم لدينا' },
+        cols: [['Dana', 'دانة', 61500], ['Rana', 'رنا', 42100], ['Blue Bridge', 'بلو بريدج', 38500], ['Yusuf', 'يوسف', 27600], ['Reem', 'ريم', 22900]]
+      }
+    },
+    draft: {
+      q: { en: T.akQ3.en, ar: T.akQ3.ar },
+      tools: ['client'],
+      a: {
+        en: '<p>Done. Here it is. Press <strong>Create request</strong>, and a second person still has to say OK before any money moves.</p>',
+        ar: '<p>تم. ها هو. اضغط <strong>أنشئ الطلب</strong>، ثم يجب أن يوافق شخص ثانٍ قبل أن يتحرك أي مال.</p>'
+      },
+      draft: true
+    },
+    other: {
+      // Asked in the other language: Arabic on the English page, English on the Arabic page.
+      flip: true,
+      q: { en: 'How much did we make this month compared to last month?', ar: 'كم ربحنا هذا الشهر مقارنة بالشهر الماضي؟' },
+      tools: ['profit'],
+      a: {
+        en: '<p>This month we made <strong>$13,101</strong>, after losing <strong>$18,875</strong> last month.</p><p>The biggest reason: spread income went up, and client trading went our way.</p>',
+        ar: '<p>ربحنا هذا الشهر <strong dir="ltr">$13,101</strong>، بعد خسارة <strong dir="ltr">$18,875</strong> في الشهر الماضي.</p><p>السبب الأكبر: دخل فرق السعر ارتفع، ونتائج تداول الزبائن جاءت لصالحنا.</p>'
+      },
+      chart: {
+        title: { en: 'Profit by month', ar: 'الربح حسب الشهر' },
+        cols: [['Last month', 'الشهر الماضي', -18875], ['This month', 'هذا الشهر', 13101]]
+      }
+    }
+  };
+  var ORDER = ['brief', 'chart', 'draft', 'other'];
+  var DRAFT = {
+    en: { kind: 'Add money', draft: 'Draft', made: 'Request #1043', for: 'For', who: 'Sami Haddad', using: 'Using', bank: 'Atlas Bank (USD)', now: 'Balance now', after: 'Balance after', btn: 'Create request', done: 'Made. Waiting for a second OK.', note: 'Nothing moves until a second person says OK.' },
+    ar: { kind: 'إضافة مال', draft: 'مسودة', made: 'الطلب رقم 1043', for: 'لصالح', who: 'سامي حداد', using: 'عبر', bank: 'بنك أطلس (دولار)', now: 'الرصيد الآن', after: 'الرصيد بعد', btn: 'أنشئ الطلب', done: 'تم الإنشاء. بانتظار موافقة ثانية.', note: 'لا يتحرك شيء حتى يوافق شخص ثانٍ.' }
+  };
+  var short = function (v) { var a = Math.abs(v); return (v < 0 ? '−' : '') + '$' + (a >= 1000 ? (a / 1000).toFixed(a >= 10000 ? 1 : 2).replace(/\.0+$/, '') + 'k' : a); };
+
+  function chartHtml(c, L) {
+    var max = Math.max.apply(null, c.cols.map(function (x) { return Math.abs(x[2]); }));
+    return '<div class="ax__chart"><h4>' + c.title[L] + '</h4><div class="ax__cols" dir="ltr">' + c.cols.map(function (x) {
+      return '<div class="ax__col' + (x[2] < 0 ? ' is-neg' : '') + '"><b>' + short(x[2]) + '</b><i style="--h:' + Math.max(6, Math.round(Math.abs(x[2]) / max * 100)) + '%"></i><span>' + (L === 'ar' ? x[1] : x[0]) + '</span></div>';
+    }).join('') + '</div></div>';
+  }
+  function draftHtml(L) {
+    var d = DRAFT[L];
+    return '<div class="ax__draft"><header><span>' + d.kind + '</span><em>' + d.draft + '</em></header><div>' +
+      '<p class="ax__amt" dir="ltr">$500.00</p><dl><div><dt>' + d.for + '</dt><dd>' + d.who + '</dd></div><div><dt>' + d.using + '</dt><dd>' + d.bank + '</dd></div>' +
+      '<div><dt>' + d.now + '</dt><dd dir="ltr">$18,400.00</dd></div><div><dt>' + d.after + '</dt><dd dir="ltr">$18,900.00</dd></div></dl>' +
+      '<p class="ax__row" style="margin:0"><span class="ax__btn">' + d.btn + '</span><span>' + d.note + '</span></p></div></div>';
+  }
+
+  var axRun = 0, axIdx = -1, axAuto = !reduce, axVisible = false, axTimer = null;
+  var Stop = function () {};
+  var wait = function (ms, run) {
+    return new Promise(function (ok, no) { setTimeout(function () { run === axRun ? ok() : no(Stop); }, ms); });
+  };
+  function setPressed(i) { each(axBtns, function (b, k) { b.setAttribute('aria-pressed', String(k === i)); b.style.setProperty('--t', '0'); }); }
+  function trimThread() {
+    var rows = axThread.querySelectorAll('.ax__q');
+    if (rows.length > 2) { var cut = rows[rows.length - 2]; while (axThread.firstChild && axThread.firstChild !== cut) axThread.removeChild(axThread.firstChild); }
+  }
+
+  async function play(i, instant) {
+    var run = ++axRun;
+    clearTimeout(axTimer);
+    axIdx = i; setPressed(i);
+    var sc = SCENES[ORDER[i]], L = sc.flip ? (LANG === 'ar' ? 'en' : 'ar') : LANG, dir = L === 'ar' ? 'rtl' : 'ltr';
+    var quick = instant || reduce;
+    try {
+      if (quick) axThread.innerHTML = '';
+      // 1. type the question
+      axTyping.textContent = ''; axTyping.setAttribute('dir', dir);
+      if (!quick) {
+        var q = sc.q[L];
+        for (var k = 1; k <= q.length; k += 2) { axTyping.textContent = q.slice(0, k); axSend.classList.toggle('is-ready', true); await wait(24, run); }
+        axTyping.textContent = q;
+        await wait(260, run);
+        axSend.classList.add('is-press'); await wait(140, run); axSend.classList.remove('is-press', 'is-ready');
+        axTyping.textContent = '';
+      }
+      var qb = document.createElement('p'); qb.className = 'ax__q'; qb.setAttribute('dir', dir); qb.textContent = sc.q[L];
+      axThread.appendChild(qb);
+      var row = document.createElement('div'); row.className = 'ax__a'; row.innerHTML = ORB + '<div class="ax__body" dir="' + dir + '"></div>';
+      axThread.appendChild(row); trimThread();
+      var body = row.querySelector('.ax__body');
+      // 2. read the books, tool by tool
+      if (!quick) {
+        axWin.classList.add('is-busy');
+        for (var t = 0; t < sc.tools.length; t++) {
+          body.innerHTML = '<p class="ax__think"><i></i><span>' + (L === 'ar' ? 'أقرأ ' : 'Reading ') + TOOLS[sc.tools[t]][L] + '…</span></p>';
+          await wait(t === 0 ? 900 : 600, run);
+        }
+      }
+      // 3. stream the answer
+      body.innerHTML = sc.a[L];
+      var words = quick ? [] : wrapWords(body);
+      var extras = [];
+      if (sc.chart) extras.push(chartHtml(sc.chart, L));
+      if (sc.draft) extras.push(draftHtml(L));
+      var tools = sc.tools.map(function (x) { return '<span>' + TOOLS[x][L] + '</span>'; }).join('');
+      extras.push('<p class="ax__checked">' + CHECK + (L === 'ar' ? 'تم الفحص:' : 'Checked:') + tools + '</p>');
+      var holder = document.createElement('div'); holder.className = 'ax__fade'; holder.innerHTML = extras.join('');
+      body.appendChild(holder);
+      if (quick) {
+        holder.classList.add('on');
+        each(holder.querySelectorAll('.ax__chart'), function (c) { c.classList.add('on'); });
+      } else {
+        for (var w = 0; w < words.length; w += 2) { words[w].classList.add('on'); if (words[w + 1]) words[w + 1].classList.add('on'); await wait(30, run); }
+        axWin.classList.remove('is-busy');
+        holder.classList.add('on');
+        await wait(120, run);
+        each(holder.querySelectorAll('.ax__chart'), function (c) { c.classList.add('on'); });
+      }
+      // 4. the person presses "Create request"
+      if (sc.draft) {
+        var btn = holder.querySelector('.ax__btn'), badge = holder.querySelector('.ax__draft em');
+        var made = function () {
+          btn.classList.add('is-done'); btn.textContent = DRAFT[L].done; badge.textContent = DRAFT[L].made; badge.classList.add('is-made');
+          btn.nextElementSibling.textContent = '';
+        };
+        if (quick) made(); else { await wait(1300, run); btn.classList.add('is-press'); await wait(160, run); btn.classList.remove('is-press'); made(); }
+      }
+      axWin.classList.remove('is-busy');
+      // 5. next scene, with a countdown on its button
+      if (axAuto && !quick) await countdown(run);
+    } catch (e) { if (e !== Stop) throw e; }
+  }
+  async function countdown(run) {
+    var next = (axIdx + 1) % ORDER.length, b = axBtns[next], start = performance.now(), D = 4200;
+    while (true) {
+      if (!axVisible) { await wait(250, run); start = performance.now(); continue; }
+      var f = (performance.now() - start) / D;
+      b.style.setProperty('--t', Math.min(1, f).toFixed(3));
+      if (f >= 1) break;
+      await wait(50, run);
+    }
+    play(next);
+  }
+  function wrapWords(el) {
+    var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT), nodes = [], n;
+    while ((n = walker.nextNode())) if (n.textContent.trim()) nodes.push(n);
+    nodes.forEach(function (t) {
+      var frag = document.createDocumentFragment();
+      t.textContent.split(/(\s+)/).forEach(function (w) {
+        if (!w) return;
+        if (/^\s+$/.test(w)) { frag.appendChild(document.createTextNode(w)); return; }
+        var s = document.createElement('span'); s.className = 'w'; s.textContent = w; frag.appendChild(s);
+      });
+      t.parentNode.replaceChild(frag, t);
+    });
+    return el.querySelectorAll('.w');
+  }
+  each(axBtns, function (b, i) { b.addEventListener('click', function () { axThread.innerHTML = ''; play(i); }); });
+  new IntersectionObserver(function (es) {
+    es.forEach(function (en) {
+      axVisible = en.isIntersecting;
+      if (axVisible && axIdx < 0) play(0, reduce);
+    });
+  }, { threshold: 0.35 }).observe(axWin);
+  function axLang() {
+    axTyping.setAttribute('data-ph', T.akPh[LANG]);
+    each(axBtns, function (b) { if (b.getAttribute('data-q') === 'other') b.querySelector('span').innerHTML = T.akQ4[LANG]; });
+    if (axIdx >= 0) { axThread.innerHTML = ''; play(axIdx, true); if (axAuto && !reduce) { var run = axRun; countdown(run).catch(function () {}); } }
+  }
+  axLang();
+
+  /* ====================================================== section nav == */
+  var navLinks = document.querySelectorAll('.vx-nav a');
+  var navTargets = Array.prototype.map.call(navLinks, function (a) { return document.querySelector(a.getAttribute('href')); });
+  var navKey = -2;
+  function navFrame() {
+    var cur = -1;
+    navTargets.forEach(function (s, i) { if (s.getBoundingClientRect().top <= innerHeight * 0.45) cur = i; });
+    if (cur === navKey) return; navKey = cur;
+    each(navLinks, function (a, i) { if (i === cur) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current'); });
+  }
+
+  function explain() { howFrame(); navFrame(); }
+  addEventListener('scroll', function () { requestAnimationFrame(explain); }, { passive: true });
+  addEventListener('resize', explain, { passive: true });
+  langHooks.push(function () {
+    howKey = '';
+    axLang();
+    explain();
+  });
+  explain();
+})();
+</script>
+</body>
+</html>

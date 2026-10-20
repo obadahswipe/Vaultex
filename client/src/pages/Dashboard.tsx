@@ -19,6 +19,7 @@ import { profitAndLoss, trialBalance } from '@/lib/data/ledger';
 import { daysAgo, isoDay } from '@/lib/data/seed';
 import type { Category } from '@/lib/data/types';
 import { CATEGORY_LABEL } from '@/lib/data/labels';
+import { AskHomeCard } from '@/components/ai/AskHomeCard';
 
 
 function greeting(tr: (en: string, ar: string) => string) {
@@ -198,6 +199,8 @@ export default function Dashboard() {
           onClick={() => navigate('/operations')}
         />
       </div>
+
+      <AskHomeCard />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <SectionCard

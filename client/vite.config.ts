@@ -1,11 +1,52 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 
+// In dev, answer /api/ask with the same code the Vercel function runs.
+function askVaultexDev(): Plugin {
+  return {
+    name: 'ask-vaultex-dev',
+    configureServer(server) {
+      Object.assign(process.env, loadEnv('development', path.resolve(__dirname, '..'), ''))
+      server.middlewares.use('/api/ask', async (req, res) => {
+        try {
+          const { handleAsk } = await server.ssrLoadModule(path.resolve(__dirname, '../api/_lib/ask-core.ts'))
+          const chunks: Buffer[] = []
+          for await (const c of req) chunks.push(c as Buffer)
+          const controller = new AbortController()
+          res.on('close', () => { if (!res.writableEnded) controller.abort() })
+          const request = new Request('http://localhost/api/ask', {
+            method: req.method,
+            headers: req.headers as Record<string, string>,
+            body: req.method === 'POST' ? Buffer.concat(chunks) : undefined,
+            signal: controller.signal,
+          })
+          const response: Response = await handleAsk(request)
+          res.statusCode = response.status
+          response.headers.forEach((v, k) => res.setHeader(k, v))
+          if (!response.body) { res.end(); return }
+          const reader = response.body.getReader()
+          for (;;) {
+            const { value, done } = await reader.read()
+            if (done) break
+            res.write(value)
+          }
+          res.end()
+        } catch (e) {
+          server.config.logger.error(String(e))
+          if (!res.headersSent) res.statusCode = 500
+          res.end()
+        }
+      })
+    },
+  }
+}
+
 export default defineConfig({
   plugins: [
     react(),
+    askVaultexDev(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'offline.html', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-512-maskable.png'],

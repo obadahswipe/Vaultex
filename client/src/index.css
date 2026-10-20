@@ -265,3 +265,16 @@ html[lang="ar"] .font-mono {
   background-clip: padding-box;
   border: 2px solid transparent;
 }
+
+/* ── Ask Vaultex ─────────────────────────────────────────── */
+@keyframes ask-sheen { from { background-position: 0% 50%; } to { background-position: 200% 50%; } }
+@keyframes ask-shimmer-move { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.ask-shimmer {
+  background: linear-gradient(90deg, hsl(var(--muted-foreground)) 0%, hsl(var(--foreground)) 50%, hsl(var(--muted-foreground)) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: ask-shimmer-move 1.6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ask-shimmer { animation: none; color: hsl(var(--muted-foreground)); }
+}
