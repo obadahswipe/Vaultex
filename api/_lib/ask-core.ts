@@ -4,8 +4,12 @@
 // function (api/ask.ts) and the Vite dev server.
 import Anthropic from '@anthropic-ai/sdk';
 import { TOOLS } from './tools';
+import { streamOpenRouter } from './openrouter';
 
 const MODEL = process.env.VAULTEX_AI_MODEL || 'claude-opus-5-5';
+// Without a Claude key, Ask Vaultex runs on OpenRouter. 'openrouter/free' picks
+// a free model that can use tools; set OPENROUTER_MODEL to choose one.
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'openrouter/free';
 const EFFORT = (process.env.VAULTEX_AI_EFFORT || 'medium') as 'low' | 'medium' | 'high';
 const MAX_BODY_BYTES = 400_000;
 const MAX_MESSAGES = 80;
@@ -66,7 +70,9 @@ function validMessages(value: unknown): value is ClientMessage[] {
 
 export async function handleAsk(request: Request): Promise<Response> {
   if (request.method !== 'POST') return json(405, { error: 'method_not_allowed' });
-  if (!process.env.ANTHROPIC_API_KEY) return json(503, { error: 'not_configured' });
+  const useClaude = !!process.env.ANTHROPIC_API_KEY;
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  if (!useClaude && !openRouterKey) return json(503, { error: 'not_configured' });
 
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'local';
   if (limited(ip)) return json(429, { error: 'too_many' });
@@ -84,6 +90,20 @@ export async function handleAsk(request: Request): Promise<Response> {
 
   const stream = new ReadableStream({
     async start(controller) {
+      if (!useClaude && openRouterKey) {
+        try {
+          await streamOpenRouter({
+            key: openRouterKey, model: OPENROUTER_MODEL, system: SYSTEM, tools: TOOLS,
+            messages: body.messages as never, signal: request.signal,
+            send: (e) => send(controller, e), referer: request.headers.get('origin') ?? undefined,
+          });
+        } catch (err) {
+          if (!(err instanceof Error && err.name === 'AbortError')) send(controller, { t: 'error', code: 'failed' });
+        } finally {
+          controller.close();
+        }
+        return;
+      }
       try {
         const turn = client.beta.messages.stream({
           model: MODEL,
